@@ -81,6 +81,10 @@ EVENT_META = {
 TRAFFIC_GRID = 64  # NxN occupancy grid per map, used for heatmaps + dead zones
 FLOW_GRID = 28     # coarser NxN grid for movement vectors (arrows must stay readable)
 MIN_FLOW_SAMPLES = 6  # cells with fewer transitions than this are too noisy to draw
+EXFIL_GRID = 48       # grid used to cluster session-exit locations
+EXFIL_MIN_EXITS = 4   # a zone needs at least this many exits to be called a zone
+EXFIL_MIN_RATIO = 6.0 # ...and this many times more exits than traffic predicts
+STORM_FIRST_DEATH = 655  # earliest KilledByStorm anywhere in the dataset, in seconds
 
 
 @dataclass
@@ -324,6 +328,272 @@ def dilate(mask: np.ndarray, r: int) -> np.ndarray:
     return out
 
 
+def _poisson_sf(k: int, lam: float) -> float:
+    """P(X >= k) for X ~ Poisson(lam). Used to put a p-value on exit clusters."""
+    if lam <= 0:
+        return 0.0 if k > 0 else 1.0
+    # sum the PMF below k and complement; k is small here so this is exact enough
+    term = math.exp(-lam)
+    cdf = term
+    for i in range(1, k):
+        term *= lam / i
+        cdf += term
+    return max(0.0, min(1.0, 1.0 - cdf))
+
+
+# Thresholds that turn a number into a flag. These are DESIGN JUDGEMENTS, not
+# industry constants - there is no public benchmark for "correct" area
+# utilisation in a mobile extraction shooter. They live here, in one place,
+# named and versioned, so a designer who disagrees can argue with a number
+# instead of with the tool. ARCHITECTURE.md section 3c explains each one.
+SCORECARD_RULES = [
+    # key, label, unit, higher_is_better, (warn, critical), why it matters
+    ("utilisation",   "Area utilisation",    "%",  True,  (80, 65),
+     "Share of reachable level that sees real traffic. Low means art budget nobody sees."),
+    ("coherence",     "Route coherence",     "",   True,  (0.40, 0.30),
+     "How much travel is committed movement vs milling. Low means no readable routes."),
+    ("concentration", "Traffic concentration", "", False, (0.60, 0.72),
+     "Gini of traffic across the level. High means everyone funnels into one place."),
+    ("extraction",    "Extraction rate",     "%",  True,  (35, 25),
+     "Inferred share of runs that end at an exfil zone rather than in death."),
+    ("storm_reach",   "Storm engagement",    "%",  True,  (40, 25),
+     "Share of matches that last long enough for the storm to exist at all."),
+    ("pvp_share",     "PvP share of kills",  "%",  True,  (10, 2),
+     "Human-vs-human kills as a share of all kills. The genre premise."),
+    ("shared",        "Shared matches",      "%",  True,  (30, 10),
+     "Share of matches containing more than one human."),
+]
+
+
+def _gini(v: np.ndarray) -> float:
+    v = np.sort(v[v >= 0].astype(float))
+    if v.size == 0 or v.sum() == 0:
+        return 0.0
+    idx = np.arange(1, v.size + 1)
+    return float((2 * (idx * v).sum()) / (v.size * v.sum()) - (v.size + 1) / v.size)
+
+
+def build_scorecard(df, matches, grids, flow, exfil):
+    """
+    Turn every metric the pipeline already computes into a per-map health
+    report with flags, so the tool volunteers problems instead of waiting to
+    be interrogated. A designer opening this on a Monday should see what
+    changed without knowing which layer to switch on.
+
+    Deliberately NOT a single composite "map score". Averaging utilisation
+    against PvP share would produce a number with no units and no meaning,
+    and it would let a map hide one catastrophic metric behind six healthy
+    ones. Each dimension is reported and flagged on its own.
+    """
+    out = {}
+    for map_id in sorted(df["map_id"].unique()):
+        g = grids.get(map_id)
+        fl = flow.get(map_id)
+        ex = exfil.get(map_id)
+        if not g:
+            continue
+        ms = [m for m in matches if m["map"] == map_id]
+        if not ms:
+            continue
+
+        playable = np.asarray(g["playable"], dtype=bool)
+        traffic = np.asarray(g["traffic"], dtype=float)
+        live = traffic[playable]
+        cut = max(1.0, traffic.max() * 0.005)
+        used = float((live > cut).sum()) / max(live.size, 1) * 100
+
+        if fl:
+            cnt = np.asarray(fl["count"], dtype=float)
+            coh = np.asarray(fl["coherence"], dtype=float)
+            coherence = float((coh * cnt).sum() / max(cnt.sum(), 1))
+        else:
+            coherence = 0.0
+
+        kills = sum(m["counts"].get("kill", 0) for m in ms)
+        storm_reach = sum(1 for m in ms if m["dur"] >= STORM_FIRST_DEATH) / len(ms) * 100
+        shared = sum(1 for m in ms if m["humans"] > 1) / len(ms) * 100
+
+        sub = df[df["map_id"] == map_id]
+        pvp = int((sub["event"] == "Kill").sum())
+        pve = int((sub["event"] == "BotKill").sum())
+
+        vals = {
+            "utilisation": round(used, 1),
+            "coherence": round(coherence, 3),
+            "concentration": round(_gini(live), 3),
+            "extraction": round((ex["rate"] * 100) if ex else 0.0, 1),
+            "storm_reach": round(storm_reach, 1),
+            "pvp_share": round(pvp / max(pvp + pve, 1) * 100, 2),
+            "shared": round(shared, 2),
+        }
+
+        rows = []
+        for key, label, unit, higher, (warn, crit), why in SCORECARD_RULES:
+            v = vals[key]
+            if higher:
+                status = "critical" if v < crit else "warn" if v < warn else "ok"
+            else:
+                status = "critical" if v > crit else "warn" if v > warn else "ok"
+            rows.append({
+                "key": key, "label": label, "unit": unit, "value": v,
+                "status": status, "warn": warn, "crit": crit,
+                "higher": higher, "why": why,
+            })
+
+        out[map_id] = {
+            "matches": len(ms),
+            "rows": rows,
+            "flags": sum(1 for r in rows if r["status"] != "ok"),
+            "critical": sum(1 for r in rows if r["status"] == "critical"),
+            "kills_per_match": round(kills / len(ms), 2),
+            "median_duration": float(np.median([m["dur"] for m in ms])),
+        }
+    return out
+
+
+def build_exfil(df: pd.DataFrame, events: list, journeys: list):
+    """
+    Recover the extraction points the telemetry never records.
+
+    The event vocabulary has no `Extracted`. DATA_QUALITY.md argues that is the
+    single most valuable missing column, and this function is the attempt to
+    reconstruct it from geometry instead of waiting for it.
+
+    The reasoning:
+
+      * Every human journey ends somewhere. If sessions ended for boring
+        reasons - death, disconnect, app backgrounded - the end locations
+        would be spread roughly in proportion to where players spend time.
+      * They are not. On Ambrose Valley 46 of 552 journeys end in one single
+        48x48 cell, about 24x more than traffic predicts.
+      * Something at those coordinates ends runs on purpose. In an extraction
+        shooter there is exactly one thing that does that.
+
+    The cross-check is what makes it safe to ship rather than a guess: look up
+    whether each journey also has a death event. Players ending inside a
+    candidate zone die 0.6-8.3% of the time. Players ending anywhere else die
+    69-83% of the time. Dying and extracting are the two ways to leave, and
+    these clusters are overwhelmingly the second one.
+
+    Note what is deliberately NOT claimed: no individual player is labelled
+    "extracted" with certainty. The clustering is a population-level statistic,
+    and the per-journey outcome inherits that uncertainty - which is why the
+    UI labels it `inferred` everywhere it appears.
+    """
+    n = EXFIL_GRID
+    out = {}
+
+    # journeys that ended with the player dead, keyed by (match, journey index)
+    fatal = set()
+    for e in events:
+        if e["k"] in ("death", "storm"):
+            fatal.add((e["m"], e["p"]))
+
+    jby = {}
+    for j in journeys:
+        jby.setdefault(j["m"], []).append(j)
+
+    match_map = {}
+    for mid, g in df.groupby("match_key"):
+        match_map[mid] = g["map_id"].iloc[0]
+
+    for map_id in sorted(df["map_id"].unique()):
+        human = [
+            j for m, js in jby.items() if match_map.get(m) == map_id
+            for j in js if not j["b"] and len(j["t"]) >= 3
+        ]
+        if len(human) < 20:
+            continue
+
+        occupancy = np.zeros((n, n))
+        exits = np.zeros((n, n))
+        for j in human:
+            ix = np.clip((np.asarray(j["x"]) * n).astype(int), 0, n - 1)
+            iy = np.clip((np.asarray(j["y"]) * n).astype(int), 0, n - 1)
+            np.add.at(occupancy, (iy, ix), 1)
+            exits[iy[-1], ix[-1]] += 1
+
+        total_exits = exits.sum()
+        expected = occupancy / max(occupancy.sum(), 1) * total_exits
+
+        hot = (exits >= EXFIL_MIN_EXITS) & (exits >= EXFIL_MIN_RATIO * np.maximum(expected, 1e-9))
+
+        # Merge touching hot cells into one zone - a door-sized trigger volume
+        # straddling a cell boundary should not read as two extraction points.
+        label = -np.ones((n, n), dtype=int)
+        zones = []
+        for sy in range(n):
+            for sx in range(n):
+                if not hot[sy, sx] or label[sy, sx] >= 0:
+                    continue
+                zid = len(zones)
+                stack, cells = [(sy, sx)], []
+                label[sy, sx] = zid
+                while stack:
+                    cy, cx = stack.pop()
+                    cells.append((cy, cx))
+                    for dy in (-1, 0, 1):
+                        for dx in (-1, 0, 1):
+                            ny_, nx_ = cy + dy, cx + dx
+                            if 0 <= ny_ < n and 0 <= nx_ < n and hot[ny_, nx_] and label[ny_, nx_] < 0:
+                                label[ny_, nx_] = zid
+                                stack.append((ny_, nx_))
+                zones.append(cells)
+
+        # per-journey outcome
+        outcomes = {}
+        for j in human:
+            ix = int(np.clip(j["x"][-1] * n, 0, n - 1))
+            iy = int(np.clip(j["y"][-1] * n, 0, n - 1))
+            if (j["m"], j["i"]) in fatal:
+                outcomes[j["i"]] = "died"
+            elif label[iy, ix] >= 0:
+                outcomes[j["i"]] = "extracted"
+            else:
+                outcomes[j["i"]] = "unknown"
+
+        zone_list = []
+        for zid, cells in enumerate(zones):
+            ex = sum(exits[c] for c in cells)
+            xp = sum(expected[c] for c in cells)
+            cu = sum(((c[1] + 0.5) / n) * exits[c] for c in cells) / ex
+            cv = sum(((c[0] + 0.5) / n) * exits[c] for c in cells) / ex
+            users, deaths, durs = 0, 0, []
+            for j in human:
+                jx = int(np.clip(j["x"][-1] * n, 0, n - 1))
+                jy = int(np.clip(j["y"][-1] * n, 0, n - 1))
+                if label[jy, jx] != zid:
+                    continue
+                users += 1
+                deaths += (j["m"], j["i"]) in fatal
+                durs.append(j["t"][-1] - j["t"][0])
+            zone_list.append({
+                "u": round(cu, 4), "v": round(cv, 4),
+                "cells": len(cells),
+                "exits": int(ex),
+                "expected": round(float(xp), 2),
+                "ratio": round(float(ex / max(xp, 1e-9)), 1),
+                "deaths": int(deaths),
+                "p": float(f"{_poisson_sf(int(ex), float(xp)):.3g}"),
+                "median_run": round(float(np.median(durs)), 1) if durs else 0.0,
+            })
+        zone_list.sort(key=lambda z: -z["exits"])
+
+        counts = Counter(outcomes.values())
+        tot = sum(counts.values())
+        out[map_id] = {
+            "grid": n,
+            "zones": zone_list,
+            "journeys": tot,
+            "extracted": counts.get("extracted", 0),
+            "died": counts.get("died", 0),
+            "unknown": counts.get("unknown", 0),
+            "rate": round(counts.get("extracted", 0) / max(tot, 1), 4),
+            "outcomes": outcomes,
+        }
+    return out
+
+
 def build_flow(df: pd.DataFrame):
     """
     Movement vector field ("map flow").
@@ -472,9 +742,25 @@ def main():
     matches, journeys, events = build_bundle(df, log, args.rdp)
     print(f"      {len(matches)} matches, {len(journeys)} journeys, {len(events)} events")
 
-    print("[4/5] building heat grids + flow field ...")
+    print("[4/5] building heat grids + flow field + exfil inference ...")
     grids = build_grids(df)
     flow = build_flow(df)
+    exfil = build_exfil(df, events, journeys)
+
+    # Stamp the inferred outcome onto each journey so the client can colour a
+    # path by how the run ended without re-deriving anything.
+    #   x = inferred extraction, d = died, ? = neither, b = bot (not inferred)
+    for mp, ex in exfil.items():
+        oc = ex.pop("outcomes")
+        for j in journeys:
+            if j["i"] in oc and not j["b"]:
+                j["o"] = {"extracted": "x", "died": "d", "unknown": "?"}[oc[j["i"]]]
+    for j in journeys:
+        j.setdefault("o", "b" if j["b"] else "?")
+    scorecard = build_scorecard(df, matches, grids, flow, exfil)
+    for mp, ex in exfil.items():
+        print(f"      {mp}: {len(ex['zones'])} exfil zones, "
+              f"{ex['extracted']}/{ex['journeys']} inferred extractions ({ex['rate']*100:.1f}%)")
 
     print("[5/5] writing artefacts ...")
     maps_meta = {}
@@ -499,6 +785,8 @@ def main():
         "events": events,
         "grids": grids,
         "flow": flow,
+        "exfil": exfil,
+        "scorecard": scorecard,
         "stats": {
             "rows": int(len(df)),
             "matches": int(df["match_key"].nunique()),
