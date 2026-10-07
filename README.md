@@ -1,0 +1,137 @@
+# LILA BLACK — Player Journey Visualisation
+
+A browser tool that turns 5 days of raw LILA BLACK telemetry into something a **Level Designer** can actually open and use: player paths drawn on the real minimaps, kill/death/loot/storm events as distinct markers, heatmaps, dead-zone detection, and a scrubbable match replay.
+
+### ▶ Live tool — _(deployed URL goes here)_
+### 🎥 Walkthrough video — _(Loom link goes here)_
+
+![Aggregate view](docs/screenshot-aggregate.png)
+
+---
+
+## What it does
+
+| | Feature |
+|---|---|
+| **Two modes** | **Aggregate** — heatmaps and statistics across hundreds of matches. **Match Replay** — one match, animated, with a timeline. They're different jobs, so they're different screens. |
+| **Player journeys** | Every path projected onto the correct minimap with the world→pixel transform verified against map landmarks (see `ARCHITECTURE.md` §3). |
+| **Humans vs bots** | Humans are bright green circles with thicker paths; bots are dimmed slate squares with thin paths. Distinguishable at a glance, toggleable with `H` / `B`. |
+| **Event markers** | Kill (amber), Death (red), Loot (cyan), Storm death (violet) — consistent across markers, legend, filters and timeline. |
+| **Filtering** | By map, by UTC date, by match, and by minimum human players per match. |
+| **Timeline playback** | Play/pause, 1×–16× speed, scrub, frame-step. The scrubber track has an **event-density histogram** baked in, so you can see where the action is and click straight to it. |
+| **Heatmaps** | Traffic (all / humans only), kill zones, death zones, loot density, storm deaths. |
+| **Dead zones** | The inverse heatmap — grid cells players effectively never enter. The brief asked "which areas of the map get ignored"; this answers it directly. |
+| **Region tool** | `Shift`+drag any area to get its kill/death/loot counts and traffic share. "Is this building pulling its weight?" |
+| **Shareable views** | Every filter, layer, match and timestamp lives in the URL. **Copy view link** puts the exact screen in a colleague's hands. |
+| **Coordinate debug** | `Ctrl`/`⌘`+`D` overlays a live world-coordinate grid so the projection can be audited without reading code. |
+
+---
+
+## Tech stack
+
+**Pipeline:** Python 3 · PyArrow · pandas · NumPy · Pillow
+**Frontend:** React 18 · TypeScript · Vite · deck.gl 9 (`OrthographicView`) · Zustand
+**Hosting:** static build, deployed to Vercel. No backend, no database, no API keys.
+
+Full reasoning and trade-offs in **[`ARCHITECTURE.md`](ARCHITECTURE.md)**.
+Three findings from using the tool in **[`INSIGHTS.md`](INSIGHTS.md)**.
+Every row the pipeline dropped and why in **[`pipeline/DATA_QUALITY.md`](pipeline/DATA_QUALITY.md)**.
+
+---
+
+## Repository layout
+
+```
+.
+├── pipeline/
+│   ├── build.py              raw parquet -> web/public/data/bundle.json
+│   ├── prepare_maps.py       24 MB of source minimaps -> 0.73 MB of WebP
+│   ├── requirements.txt
+│   └── DATA_QUALITY.md       generated: every dropped row, by reason
+├── web/
+│   ├── src/
+│   │   ├── components/       MapView · LeftPanel · RightPanel · Timeline
+│   │   ├── lib/              viz.ts (projection + palette) · useFiltered.ts
+│   │   ├── store.ts          Zustand store
+│   │   ├── types.ts
+│   │   └── App.tsx           layout · URL state · keyboard shortcuts
+│   └── public/
+│       ├── data/bundle.json  generated
+│       └── maps/*.webp       generated
+├── docs/
+├── ARCHITECTURE.md
+├── INSIGHTS.md
+└── README.md
+```
+
+---
+
+## Setup
+
+### Prerequisites
+Node 20+, Python 3.10+
+
+### 1. Get the data
+Download `player_data.zip` and unpack it so you have:
+
+```
+player_data/
+├── February_10/ … February_14/     *.nakama-0 parquet shards
+└── minimaps/                       AmbroseValley_Minimap.png, GrandRift_Minimap.png, Lockdown_Minimap.jpg
+```
+
+### 2. Run the pipeline
+```bash
+pip install -r pipeline/requirements.txt
+
+python pipeline/prepare_maps.py --input player_data/minimaps --out web/public/maps
+python pipeline/build.py        --input player_data          --out web/public/data
+```
+
+`build.py` prints a summary and writes `pipeline/DATA_QUALITY.md`. Both outputs are committed, so you can skip this and go straight to step 3.
+
+### 3. Run the app
+```bash
+cd web
+npm install
+npm run dev          # http://localhost:5173
+```
+
+### 4. Build for production
+```bash
+cd web
+npm run build        # -> web/dist
+npm run preview
+```
+
+### Environment variables
+**None.** The tool is fully static and has no secrets or external services.
+
+### Deploying
+Vercel: point it at the repo, set **Root Directory** to `web`. Framework preset Vite, build `npm run build`, output `dist`. Netlify/Cloudflare Pages/GitHub Pages work identically — it's just static files.
+
+---
+
+## Keyboard shortcuts
+
+| Key | Action |
+|---|---|
+| `Space` | Play / pause (Replay mode) |
+| `←` `→` | Step 1 second · `Shift` for 10 |
+| `1` `2` `3` `4` | Toggle journeys / events / heatmap / dead zones |
+| `H` / `B` | Toggle humans / bots |
+| `R` | Switch Aggregate ⇄ Replay |
+| `Shift` + drag | Measure a region |
+| `Ctrl`/`⌘` + `D` | Coordinate debug grid |
+| `Esc` | Clear selection & region |
+| `?` | Shortcut reference |
+
+---
+
+## Data notes worth knowing
+
+Three things in the dataset will silently produce a wrong tool if taken at face value. All three are handled here and documented in `ARCHITECTURE.md` §3–4:
+
+1. **`ts` is not what the README says it is.** It's typed `timestamp[ms]` and described as match-relative. The int64 is actually **epoch seconds** — read literally, every match happens on 1970-01-21 and lasts 0.4 seconds.
+2. **The minimaps are not 1024×1024.** They're 4320², 2160×2158 and 9000², and one isn't square. The pipeline works in resolution-independent UV space.
+3. **The day folders are not UTC days.** Matches straddle midnight, so `February_10/` contains Feb 9 rows. Filtering by folder name is wrong; the date filter uses the derived timestamp.
