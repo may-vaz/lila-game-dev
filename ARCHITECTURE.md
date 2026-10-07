@@ -116,7 +116,7 @@ The README gives two signals, and they contradict each other:
 - `user_id` is a UUID → human; a short numeric ID → bot.
 - `BotPosition`/`BotKill`/`BotKilled` → bot; `Position`/`Kill`/`Loot` → human.
 
-In practice **220 rows carry `event = 'Position'` under a numeric user_id**, and a few hundred `BotKill`/`BotKilled`/`Loot` rows do the same. `BotPosition`, however, is 100 % consistent with numeric IDs.
+In practice **636 rows carry `event = 'Position'` under a numeric user_id**, and a smaller number of `BotKill`/`BotKilled`/`Loot` rows do the same. `BotPosition`, however, is 100 % consistent with numeric IDs.
 
 **Decision:** `user_id` shape is the source of truth for the human/bot flag — it's an identity property, whereas the event name describes *what happened*. I read `BotKill` as *"a bot was the victim"* and `BotKilled` as *"a bot was the killer"*, relative to the file's owner. The conflicts are counted in the quality report rather than silently resolved.
 
