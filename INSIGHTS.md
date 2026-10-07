@@ -1,4 +1,6 @@
-# Three things I learned about LILA BLACK
+# What I learned about LILA BLACK
+
+The brief asked for three. The fourth came out of the flow-field and compare layers after they were built, and it changes what to do about the second — so it is here too.
 
 All figures are from the full dataset — **1,243 files, 89,104 rows, 796 matches, 245 humans, 94 bots, Feb 9–14 2026 (UTC)** — read through the tool in this repo. Every claim below is reproducible from a link in the tool itself.
 
@@ -133,3 +135,62 @@ Map rotation share · area utilisation per map · loot-per-run · art-asset ROI 
 **Why a level designer should care**
 
 This is the most directly actionable finding here. It names specific POIs that aren't earning their place, quantifies how much of each level is unused, and gives a concrete lever — loot placement — that's already proven to move players, since looting is 79 % of everything they do.
+
+
+---
+
+## Insight 4 — Players already collapse toward the map centre on their own. The storm is not doing it, and it is not needed to.
+
+**What caught my eye**
+
+Turning on **Compare A/B** with *Late game* vs *Early game* produces the same picture on every map: a blue ring around the edge and a solid red core. Players start dispersed and end up concentrated in the middle. The obvious explanation is the storm — that is what storms are for.
+
+The obvious explanation is wrong.
+
+**The evidence**
+
+Mean dispersion of human position samples (average distance from the phase centroid, in UV units, so 0.25 ≈ a quarter of the map):
+
+| Map | Early | Mid | Late | Change |
+|---|---|---|---|---|
+| Ambrose Valley | 0.290 | 0.216 | 0.176 | **−39.2 %** |
+| Grand Rift | 0.253 | 0.209 | 0.201 | **−20.8 %** |
+| Lockdown | 0.232 | 0.193 | 0.179 | **−23.0 %** |
+
+Monotonic on all three maps. So far this is consistent with a storm squeezing players inward.
+
+Now the control. The earliest storm death anywhere in the dataset is **t = 655 s** (Insight 2). Split the matches on that line:
+
+| Map | Matches **ending before 655 s** — storm impossible | Matches lasting past 655 s — storm possible |
+|---|---|---|
+| Ambrose Valley | **−40.0 %** | −36.1 % |
+| Grand Rift | **−22.8 %** | −12.6 % |
+| Lockdown | **−24.6 %** | −20.7 % |
+
+In the 656 of 796 matches (82.4 %) where the storm *cannot* have influenced anything, the convergence is **just as strong — slightly stronger**. It is not the storm. It is the loot gradient: the dense central town is where the loot is, looting is 79 % of all player actions, and players walk to it.
+
+The flow field says the same thing from the other direction. Mean coherence on Ambrose Valley is **0.30**, with **162 churn cells against 26 true one-way routes** — a 6:1 ratio. Players are not being *routed* anywhere. They drift to the middle and then mill around inside it.
+
+![Late vs early game on Ambrose Valley](docs/screenshot-compare.png)
+
+**Is it actionable? Yes — and it makes Insight 2 cheaper to act on.**
+
+Insight 2 recommended pulling first storm contact forward to ~4:00–5:00. The worry with any change like that is that it fights the players. This says it will not: **the storm would be reinforcing a movement players already make unprompted.** It is a tailwind, not a correction. That materially lowers the risk of the change.
+
+Two further actions fall out of it:
+
+1. **Stop treating the centre as the destination and start treating it as the arena.** Players reliably arrive there by the final third with no prompting. That is the one moment the sparse population of Insight 1 is naturally co-located — the only place and time PvP can realistically happen today. Late-game loot, objectives and extraction points belong there.
+2. **The 6:1 churn-to-route ratio is the number to move.** Real extraction shooters are built on committed rotations — players picking a route and being punished for reconsidering. Ambrose Valley currently reads as one big open field players wander across. Raising coherence on the approach lanes (cover, one-way drops, narrowed sightlines) is a concrete level-design brief with a measurable before/after, and the Compare layer is how you would check it.
+
+**Metrics affected**
+
+Time-to-first-contact · PvP encounter rate · late-game engagement density · storm-death rate (should rise from 5.3 % toward a genre-normal 10–15 % without feeling arbitrary) · route coherence per lane · area utilisation in the final third.
+
+**Why a level designer should care**
+
+It separates a correlation from a cause, and the direction of the answer changes the decision. Had the storm been driving convergence, moving it earlier would have been a risky lever on the one mechanic that was working. It is not driving it — the level's own loot layout is — which means the storm is pure upside and the real design surface is the approach lanes into the centre, not the storm curve.
+
+**How to see it in the tool**
+
+- `?mode=aggregate&map=AmbroseValley&cmp=traffic_late~traffic_early&nopaths=1&noevents=1` — the red core and blue ring.
+- `?mode=aggregate&map=AmbroseValley&flow=0.30&nopaths=1&noevents=1` — the flow field; note how few arrows survive the coherence filter.

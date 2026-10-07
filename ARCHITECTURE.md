@@ -96,6 +96,44 @@ Anyone hard-coding `* 1024` gets a correct-looking result only because they then
 
 ---
 
+## 3b. Two derived layers: flow field and A/B comparison
+
+Heatmaps answer *where*. Two questions a level designer asks immediately afterwards are *which way* and *compared to what*, and neither is answerable from a density map. Both are precomputed in `pipeline/build.py`.
+
+### Flow field
+
+For every consecutive pair of position samples from the same player in the same match, the displacement is binned into a 28×28 grid. Per cell the pipeline emits the mean heading, the mean speed, the sample count, and:
+
+```
+coherence = |Σ v| / Σ |v|      in 0..1
+```
+
+A cell where every player travels the same way sums to a long vector and scores near 1. A cell where players wander or pass in both directions cancels out and scores near 0. The two ends are semantically opposite — a committed route versus a pocket of milling — so the layer uses a diverging amber/blue ramp rather than a sequential one.
+
+Design decisions worth naming:
+
+- **28×28, not the heatmap's 64×64.** Arrows need room. At 64 the field becomes an unreadable hairball, and the per-cell sample count gets too thin for the mean direction to mean anything.
+- **Gaps are dropped, not interpolated.** Any transition with `dt ≥ 30 s` is discarded. A one-minute hole in telemetry is not a sprint across the map, and bridging it would invent a route that no player took.
+- **Cells under 6 transitions are blanked.** A direction derived from two samples is noise wearing an arrow's clothing.
+- **Arrows are three `LineLayer` segments** (shaft plus two barbs) generated on the CPU in `lib/viz.ts`. deck.gl has no arrow primitive; this avoids shipping an icon atlas to draw a triangle, and the worst case is ~2.3k segments.
+- **Length encodes volume, logarithmically**, because traffic is heavily skewed and a linear mapping would leave every cell but the busiest invisible.
+
+A useful validation side-effect: mean speed comes out at **2.7–3.4 world units/second** across all three maps. That is a plausible character run speed, which is independent corroboration that the coordinate scale and the timestamp unit are both right. If either had been wrong, this number would have been absurd.
+
+### A/B comparison
+
+The pipeline also emits traffic grids sliced by **relative** match phase — early/mid/late at 0–33 / 33–66 / 66–100 % of *each match's own duration* — plus bot-only and human-only grids. The compare layer renders `normalise(A) − normalise(B)` as a red/blue divergent overlay.
+
+The normalisation is the whole feature. Raw counts would only ever show that whichever slice contains more rows is "bigger everywhere". Dividing each grid by its own total first converts the question from "which slice is larger" to "**did the distribution of players actually move**" — which is the question worth asking.
+
+Phase is relative rather than absolute seconds because match length varies by 3–4×; "the first two minutes" means something very different in a 3-minute match and a 14-minute one.
+
+Cells below 6 % of the maximum absolute difference are suppressed as rounding fuzz, and the alpha ramp is `sqrt`-shaped because the difference distribution is long-tailed.
+
+**Cost:** both features together added **0.16 MB** to the bundle (3.67 → 3.83 MB; 750 KB gzipped) and ~1 s to the pipeline. Nothing is computed in the browser beyond the subtraction and the arrow geometry.
+
+---
+
 ## 4. Assumptions, and the data problems behind them
 
 ### 4.1 The timestamp is wall-clock, not match-relative — and the unit is wrong
@@ -142,6 +180,9 @@ Exact-`(0,0)` coordinates are treated as spawn/null placeholders rather than a r
 | RDP path simplification (ε = 0.0015 UV) | Ship every position sample | ~40 % smaller payload with no visible change to path shape. | Sub-pixel detail lost at extreme zoom. |
 | Two explicit modes (Aggregate / Replay) | One screen with everything toggled | They are two different jobs. 726 journeys drawn at once is a hairball; one match animated is a story. Each mode defaults to the right layers. | A mode switch to learn. |
 | Reinterpret the timestamp | Trust the README | Durations and dates become plausible and self-consistent. | If the README is right and I'm wrong, dates are wrong — but then matches last 0.4 s, which they do not. |
+| Flow grid at 28×28, heat grid at 64×64 | One shared resolution | Arrows need breathing room and a decent per-cell sample count; density maps want fine detail. Forcing one resolution makes both worse. | Two grid systems to keep straight; the compare layer uses the 64× grid, the flow layer the 28×. |
+| Normalise before diffing in Compare A/B | Subtract raw counts | Raw counts just restate which slice has more rows. Shares answer whether players *redistributed*. | Absolute volume is lost; the right panel carries it instead. |
+| Drop position transitions with `dt ≥ 30 s` | Interpolate across the gap | An invented straight line through a telemetry hole is a route no player took, and it would be indistinguishable from a real one. | Slightly fewer samples in the flow field. |
 | `user_id` shape for bot detection | Trust event-name prefixes | It's an identity property and `BotPosition` corroborates it perfectly. | ~500 rows have contradictory event names; counted, not hidden. |
 
 ---

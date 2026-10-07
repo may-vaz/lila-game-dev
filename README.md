@@ -7,6 +7,13 @@ A browser tool that turns 5 days of raw LILA BLACK telemetry into something a **
 
 ![Aggregate view](docs/screenshot-aggregate.png)
 
+<table>
+<tr>
+<td width="50%"><img src="docs/screenshot-flowfield.png" alt="Flow field"><br><sub><b>Flow field</b> — mean direction of travel per cell, coloured by coherence. Amber is a one-way route, blue is players milling.</sub></td>
+<td width="50%"><img src="docs/screenshot-compare.png" alt="Compare A/B"><br><sub><b>Compare A/B</b> — late game vs early game. Red core, blue ring: players converge on the centre. See <code>INSIGHTS.md</code> §4.</sub></td>
+</tr>
+</table>
+
 ---
 
 ## What it does
@@ -20,9 +27,12 @@ A browser tool that turns 5 days of raw LILA BLACK telemetry into something a **
 | **Filtering** | By map, by UTC date, by match, and by minimum human players per match. |
 | **Timeline playback** | Play/pause, 1×–16× speed, scrub, frame-step. The scrubber track has an **event-density histogram** baked in, so you can see where the action is and click straight to it. |
 | **Heatmaps** | Traffic (all / humans only), kill zones, death zones, loot density, storm deaths. |
+| **Flow field** | Movement **direction**, not just density. Each cell shows the mean heading of players crossing it, coloured by **coherence** (`\|Σv\| / Σ\|v\|`) — amber = a one-way corridor everyone traverses the same way, blue = a pocket where players mill about. A heatmap says *where*; this says *which way*, which is what "map flow" actually means. |
+| **Compare A/B** | A divergent diff of any two slices of the map — late vs early game, bots vs humans, deaths vs traffic. Both sides are normalised to a share of their own total before subtracting, so it shows players **redistributing** rather than one slice simply having more rows. Red = busier in A, blue = busier in B. This is the "did the change work?" view, applied to level design. |
 | **Dead zones** | The inverse heatmap — grid cells players effectively never enter. The brief asked "which areas of the map get ignored"; this answers it directly. |
 | **Region tool** | `Shift`+drag any area to get its kill/death/loot counts and traffic share. "Is this building pulling its weight?" |
 | **Shareable views** | Every filter, layer, match and timestamp lives in the URL. **Copy view link** puts the exact screen in a colleague's hands. |
+| **Movement character** | Headline read-out of the flow field: mean coherence, mean speed in world units/second, and the split between true routes and churn cells. |
 | **Coordinate debug** | `Ctrl`/`⌘`+`D` overlays a live world-coordinate grid so the projection can be audited without reading code. |
 
 ---
@@ -119,6 +129,7 @@ Vercel: point it at the repo, set **Root Directory** to `web`. Framework preset 
 | `Space` | Play / pause (Replay mode) |
 | `←` `→` | Step 1 second · `Shift` for 10 |
 | `1` `2` `3` `4` | Toggle journeys / events / heatmap / dead zones |
+| `5` `6` | Toggle flow field / compare A-B |
 | `H` / `B` | Toggle humans / bots |
 | `R` | Switch Aggregate ⇄ Replay |
 | `Shift` + drag | Measure a region |
