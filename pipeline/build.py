@@ -61,6 +61,8 @@ MAP_CONFIG = {
                       "label": "Lockdown",       "image": "Lockdown_Minimap.jpg"},
 }
 
+SCALE_LOOKUP = {k: v["scale"] for k, v in MAP_CONFIG.items()}
+
 UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
 
 POSITION_EVENTS = {"Position", "BotPosition"}
@@ -77,6 +79,8 @@ EVENT_META = {
 }
 
 TRAFFIC_GRID = 64  # NxN occupancy grid per map, used for heatmaps + dead zones
+FLOW_GRID = 28     # coarser NxN grid for movement vectors (arrows must stay readable)
+MIN_FLOW_SAMPLES = 6  # cells with fewer transitions than this are too noisy to draw
 
 
 @dataclass
@@ -236,6 +240,13 @@ def build_bundle(df: pd.DataFrame, log: QualityLog, rdp_eps: float):
 
     df["kind"] = df["event"].map(lambda e: EVENT_META.get(e, {}).get("kind", "other"))
 
+    # Relative match phase (0 = early, 1 = mid, 2 = late). Relative rather than
+    # absolute seconds because match length varies 2x-4x; "the first two minutes"
+    # means something different in a 3-minute match and a 14-minute one.
+    match_dur = df.groupby("match_key")["t"].transform("max")
+    frac = np.where(match_dur > 0, df["t"] / match_dur.replace(0, np.nan), 0.0)
+    df["phase"] = np.clip((np.nan_to_num(frac) * 3).astype(int), 0, 2)
+
     matches, journeys, events = [], [], []
 
     for (map_id, match_key), m in df.groupby(["map_id", "match_key"], sort=False):
@@ -313,6 +324,85 @@ def dilate(mask: np.ndarray, r: int) -> np.ndarray:
     return out
 
 
+def build_flow(df: pd.DataFrame):
+    """
+    Movement vector field ("map flow").
+
+    For every consecutive pair of position samples belonging to the same
+    player in the same match, bin the displacement into a coarse grid and
+    accumulate the vector sum and the scalar path length. Per cell we emit:
+
+      dx, dy      mean unit-ish direction of travel
+      coherence   |sum(v)| / sum(|v|)  in 0..1
+                    1.0 -> every player crosses this cell the same way
+                           (a one-way corridor / forced rotation)
+                    0.0 -> players mill around or pass both ways
+                           (a hub, a looting pocket, a dead end they back out of)
+      speed       mean world units per second
+      n           number of transitions observed
+
+    Coherence is the interesting half. A heatmap says "players are here";
+    a flow field says "players are moving THROUGH here, in this direction" -
+    which is what a level designer needs to reason about rotations, flanks
+    and whether the storm is pushing people the way it was designed to.
+    """
+    out = {}
+    n = FLOW_GRID
+    pos = df[df["event"].isin(POSITION_EVENTS)]
+
+    for map_id, g in pos.groupby("map_id"):
+        sum_dx = np.zeros((n, n)); sum_dy = np.zeros((n, n))
+        sum_mag = np.zeros((n, n)); sum_spd = np.zeros((n, n))
+        count = np.zeros((n, n), dtype=np.int32)
+
+        for _, tr in g.groupby(["match_key", "user_id"], sort=False):
+            if len(tr) < 2:
+                continue
+            u = tr["u"].to_numpy(); v = tr["v"].to_numpy(); t = tr["t"].to_numpy()
+            du = np.diff(u); dv = np.diff(v); dt = np.diff(t)
+
+            # Drop telemetry gaps: a 60s hole is not a straight sprint across
+            # the map, and interpolating it would invent a route.
+            ok = (dt > 0) & (dt < 30)
+            if not ok.any():
+                continue
+            du, dv, dt = du[ok], dv[ok], dt[ok]
+            mag = np.hypot(du, dv)
+            moving = mag > 1e-5
+            du, dv, dt, mag = du[moving], dv[moving], dt[moving], mag[moving]
+            if not len(du):
+                continue
+
+            ix = np.clip((u[:-1][ok][moving] * n).astype(int), 0, n - 1)
+            iy = np.clip((v[:-1][ok][moving] * n).astype(int), 0, n - 1)
+
+            np.add.at(sum_dx, (iy, ix), du)
+            np.add.at(sum_dy, (iy, ix), dv)
+            np.add.at(sum_mag, (iy, ix), mag)
+            np.add.at(sum_spd, (iy, ix), mag * SCALE_LOOKUP[map_id] / dt)
+            np.add.at(count, (iy, ix), 1)
+
+        with np.errstate(invalid="ignore", divide="ignore"):
+            coherence = np.where(sum_mag > 0, np.hypot(sum_dx, sum_dy) / sum_mag, 0.0)
+            norm = np.hypot(sum_dx, sum_dy)
+            dirx = np.where(norm > 0, sum_dx / norm, 0.0)
+            diry = np.where(norm > 0, sum_dy / norm, 0.0)
+            speed = np.where(count > 0, sum_spd / np.maximum(count, 1), 0.0)
+
+        weak = count < MIN_FLOW_SAMPLES
+        dirx[weak] = 0.0; diry[weak] = 0.0; coherence[weak] = 0.0
+
+        out[map_id] = {
+            "n": n,
+            "dx": np.round(dirx, 4).flatten().tolist(),
+            "dy": np.round(diry, 4).flatten().tolist(),
+            "coherence": np.round(coherence, 4).flatten().tolist(),
+            "speed": np.round(speed, 2).flatten().tolist(),
+            "count": count.flatten().tolist(),
+        }
+    return out
+
+
 def build_grids(df: pd.DataFrame):
     """
     Pre-binned NxN grids per map for traffic / kills / deaths / loot.
@@ -327,9 +417,14 @@ def build_grids(df: pd.DataFrame):
     for map_id, g in df.groupby("map_id"):
         n = TRAFFIC_GRID
         layers = {}
+        phase = g["phase"]
         for name, sel in [
             ("traffic", g["event"].isin(POSITION_EVENTS)),
             ("traffic_human", g["event"].isin(POSITION_EVENTS) & ~g["is_bot"]),
+            ("traffic_bot", g["event"].isin(POSITION_EVENTS) & g["is_bot"]),
+            ("traffic_early", g["event"].isin(POSITION_EVENTS) & (phase == 0)),
+            ("traffic_mid", g["event"].isin(POSITION_EVENTS) & (phase == 1)),
+            ("traffic_late", g["event"].isin(POSITION_EVENTS) & (phase == 2)),
             ("kills", g["kind"] == "kill"),
             ("deaths", g["kind"] == "death"),
             ("loot", g["kind"] == "loot"),
@@ -377,8 +472,9 @@ def main():
     matches, journeys, events = build_bundle(df, log, args.rdp)
     print(f"      {len(matches)} matches, {len(journeys)} journeys, {len(events)} events")
 
-    print("[4/5] building heat grids ...")
+    print("[4/5] building heat grids + flow field ...")
     grids = build_grids(df)
+    flow = build_flow(df)
 
     print("[5/5] writing artefacts ...")
     maps_meta = {}
@@ -402,6 +498,7 @@ def main():
         "journeys": journeys,
         "events": events,
         "grids": grids,
+        "flow": flow,
         "stats": {
             "rows": int(len(df)),
             "matches": int(df["match_key"].nunique()),
