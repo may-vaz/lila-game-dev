@@ -1,15 +1,31 @@
 import { useStore } from '../store';
 import type { HeatMetric } from '../store';
 import { useFiltered } from '../lib/useFiltered';
-import { fmtTime, fmtNum, shortId } from '../lib/viz';
+import { fmtTime, fmtNum, shortId, METRIC_LABEL } from '../lib/viz';
 
 const HEAT_OPTIONS: { v: HeatMetric; l: string }[] = [
   { v: 'traffic', l: 'Traffic — all players' },
   { v: 'traffic_human', l: 'Traffic — humans only' },
+  { v: 'traffic_bot', l: 'Traffic — bots only' },
   { v: 'kills', l: 'Kill zones' },
   { v: 'deaths', l: 'Death zones' },
   { v: 'loot', l: 'Loot density' },
   { v: 'storm', l: 'Storm deaths' },
+];
+
+/** Everything that can sit on either side of the A/B comparison. */
+const CMP_OPTIONS: HeatMetric[] = [
+  'traffic_early', 'traffic_mid', 'traffic_late',
+  'traffic_human', 'traffic_bot', 'traffic',
+  'kills', 'deaths', 'loot', 'storm',
+];
+
+/** One-click comparisons a level designer actually asks for. */
+const CMP_PRESETS: { l: string; a: HeatMetric; b: HeatMetric; why: string }[] = [
+  { l: 'Late vs early game', a: 'traffic_late', b: 'traffic_early', why: 'where does the match migrate to?' },
+  { l: 'Bots vs humans', a: 'traffic_bot', b: 'traffic_human', why: 'do bots hold ground players never see?' },
+  { l: 'Deaths vs traffic', a: 'deaths', b: 'traffic', why: 'lethal beyond simple footfall' },
+  { l: 'Loot vs traffic', a: 'loot', b: 'traffic', why: 'loot drawing players off-route' },
 ];
 
 function Row({
@@ -133,6 +149,12 @@ export default function LeftPanel() {
         <Row on={f.showDead} onClick={() => patch({ showDead: !f.showDead })} k="4">
           Dead zones
         </Row>
+        <Row on={f.showFlow} onClick={() => patch({ showFlow: !f.showFlow })} k="5">
+          Flow field
+        </Row>
+        <Row on={f.showDiff} onClick={() => patch({ showDiff: !f.showDiff })} k="6">
+          Compare A/B
+        </Row>
 
         {f.showHeat && (
           <div className="field" style={{ marginTop: 9 }}>
@@ -145,6 +167,62 @@ export default function LeftPanel() {
           </div>
         )}
       </div>
+
+      {f.showFlow && (
+        <div className="sect">
+          <h3>Flow field</h3>
+          <div className="note" style={{ marginBottom: 9 }}>
+            Mean direction of travel per cell. Colour is <b>coherence</b> — amber means
+            everyone crosses the same way (a corridor), blue means players mill about
+            (a pocket or a dead end). Arrow length is how busy the cell is.
+          </div>
+          <div className="field">
+            <label>Min. coherence · {f.flowMin.toFixed(2)}</label>
+            <input
+              type="range" min={0} max={0.9} step={0.05} value={f.flowMin}
+              onChange={(e) => patch({ flowMin: +e.target.value })}
+              style={{ width: '100%', accentColor: 'var(--accent)' }}
+            />
+            <div className="note" style={{ marginTop: 4 }}>
+              Raise this to strip out churn and leave only committed routes.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {f.showDiff && (
+        <div className="sect">
+          <h3>Compare A/B</h3>
+          <div className="note" style={{ marginBottom: 9 }}>
+            Both slices are normalised to a share of their own total before subtracting,
+            so this shows players <b>redistributing</b>, not just one slice having more rows.
+          </div>
+          <div className="field">
+            <label>A — shown red</label>
+            <select value={f.cmpA} onChange={(e) => patch({ cmpA: e.target.value as HeatMetric })}>
+              {CMP_OPTIONS.map((o) => <option key={o} value={o}>{METRIC_LABEL[o]}</option>)}
+            </select>
+          </div>
+          <div className="field">
+            <label>B — shown blue</label>
+            <select value={f.cmpB} onChange={(e) => patch({ cmpB: e.target.value as HeatMetric })}>
+              {CMP_OPTIONS.map((o) => <option key={o} value={o}>{METRIC_LABEL[o]}</option>)}
+            </select>
+          </div>
+          <label style={{ marginTop: 4 }}>Presets</label>
+          {CMP_PRESETS.map((p) => (
+            <div
+              key={p.l}
+              className={`row ${f.cmpA === p.a && f.cmpB === p.b ? 'on' : ''}`}
+              onClick={() => patch({ cmpA: p.a, cmpB: p.b })}
+              title={p.why}
+            >
+              <div className="box" />
+              <span className="nm">{p.l}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="sect">
         <h3>Event types</h3>

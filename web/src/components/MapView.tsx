@@ -9,6 +9,7 @@ import { useStore } from '../store';
 import { useFiltered } from '../lib/useFiltered';
 import {
   SIZE, toPx, EVENT_COLORS, EVENT_LABEL, HUMAN_COLOR, BOT_COLOR, HEAT_RANGE, fmtTime, shortId,
+  buildArrows, diffGrids, diffColor, METRIC_LABEL,
 } from '../lib/viz';
 import type { GameEvent, Journey } from '../types';
 
@@ -20,7 +21,7 @@ function fitZoom(w: number, h: number) {
   return Math.log2((Math.min(w, h) * 0.94) / SIZE);
 }
 
-interface Hover { x: number; y: number; obj: any; kind: 'event' | 'path' | 'cell' }
+interface Hover { x: number; y: number; obj: any; kind: 'event' | 'path' | 'cell' | 'flow' | 'diff' }
 
 export default function MapView() {
   const bundle = useStore((s) => s.bundle)!;
@@ -78,6 +79,7 @@ export default function MapView() {
 
   const meta = bundle.maps[f.mapId];
   const grid = bundle.grids[f.mapId];
+  const flow = bundle.flow?.[f.mapId];
 
   // -------------------------------------------------------------- layers
   const layers = useMemo(() => {
@@ -91,7 +93,9 @@ export default function MapView() {
         image: `${import.meta.env.BASE_URL}${meta.image}`,
         // [left, bottom, right, top] - top=0 because our Y axis points down
         bounds: [0, SIZE, SIZE, 0],
-        opacity: f.showHeat ? 0.62 : 1.0,
+        // Any analytical overlay needs the basemap pushed back or it fights
+        // the data for attention; raw journeys read better at full brightness.
+        opacity: f.showHeat || f.showDiff ? 0.6 : f.showFlow ? 0.72 : 1.0,
         coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
         pickable: false,
       }),
@@ -159,6 +163,70 @@ export default function MapView() {
           pickable: true,
           onHover: (i: any) =>
             setHover(i.object ? { x: i.x, y: i.y, obj: i.object, kind: 'cell' } : null),
+        }),
+      );
+    }
+
+    // 3b. A/B comparison -------------------------------------------------
+    // Two slices of the same map, normalised to shares and subtracted, so the
+    // question answered is "did players REDISTRIBUTE" rather than "which
+    // slice has more rows". Red = more in A, blue = more in B.
+    if (f.showDiff) {
+      const n = grid.n;
+      const A = grid[f.cmpA] as number[];
+      const B = grid[f.cmpB] as number[];
+      const playable = grid.playable as number[];
+      const { diff, scale } = diffGrids(A, B);
+      const polys: any[] = [];
+      for (let i = 0; i < diff.length; i++) {
+        if (!playable[i]) continue;
+        const d = diff[i] / scale;
+        if (Math.abs(d) < 0.06) continue;   // suppress rounding fuzz
+        const gx = i % n, gy = Math.floor(i / n);
+        const u0 = gx / n, u1 = (gx + 1) / n, v0 = gy / n, v1 = (gy + 1) / n;
+        polys.push({
+          c: [toPx(u0, v0), toPx(u1, v0), toPx(u1, v1), toPx(u0, v1)],
+          d,
+          a: A[i],
+          b: B[i],
+        });
+      }
+      L.push(
+        new PolygonLayer({
+          id: `diff-${f.mapId}-${f.cmpA}-${f.cmpB}`,
+          data: polys,
+          coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+          getPolygon: (d: any) => d.c,
+          getFillColor: (d: any) => diffColor(d.d),
+          stroked: false,
+          filled: true,
+          pickable: true,
+          updateTriggers: { getFillColor: [f.cmpA, f.cmpB] },
+          onHover: (i: any) =>
+            setHover(i.object ? { x: i.x, y: i.y, obj: i.object, kind: 'diff' } : null),
+        }),
+      );
+    }
+
+    // 3c. flow field -------------------------------------------------------
+    // Arrows are three line segments each, built on the CPU in lib/viz.ts.
+    if (f.showFlow && flow) {
+      const segs = buildArrows(flow, f.flowMin);
+      L.push(
+        new LineLayer({
+          id: `flow-${f.mapId}`,
+          data: segs,
+          coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+          getSourcePosition: (d: any) => d.s,
+          getTargetPosition: (d: any) => d.t,
+          getColor: (d: any) => d.color,
+          getWidth: 1.7,
+          widthUnits: 'pixels',
+          widthMinPixels: 1.2,
+          pickable: true,
+          updateTriggers: { getColor: [f.flowMin] },
+          onHover: (i: any) =>
+            setHover(i.object ? { x: i.x, y: i.y, obj: i.object.cell, kind: 'flow' } : null),
         }),
       );
     }
@@ -355,7 +423,7 @@ export default function MapView() {
     }
 
     return L;
-  }, [bundle, f, mode, time, journeys, events, selected, region, live, debug, meta, grid, select]);
+  }, [bundle, f, mode, time, journeys, events, selected, region, live, debug, meta, grid, flow, select]);
 
   // ---------------------------------------------------------------- drag
   const unproject = useCallback((info: any): [number, number] | null => {
@@ -466,6 +534,36 @@ function Tooltip({ h }: { h: Hover }) {
       </div>
     );
   }
+  if (h.kind === 'flow') {
+    const c = h.obj;
+    const compass = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][
+      Math.round(c.bearing / 45) % 8
+    ];
+    const reading =
+      c.coherence >= 0.7 ? 'one-way route'
+      : c.coherence >= 0.4 ? 'preferred direction'
+      : 'milling / two-way';
+    return (
+      <div className="tooltip" style={style}>
+        <div className="tt-h">Flow · {compass}</div>
+        <div className="tt-r"><span>coherence</span><span>{c.coherence.toFixed(2)} — {reading}</span></div>
+        <div className="tt-r"><span>bearing</span><span>{c.bearing.toFixed(0)}°</span></div>
+        <div className="tt-r"><span>mean speed</span><span>{c.speed.toFixed(1)} u/s</span></div>
+        <div className="tt-r"><span>transitions</span><span>{c.count}</span></div>
+      </div>
+    );
+  }
+  if (h.kind === 'diff') {
+    const d = h.obj;
+    return (
+      <div className="tooltip" style={style}>
+        <div className="tt-h">{d.d >= 0 ? 'Busier in A' : 'Busier in B'}</div>
+        <div className="tt-r"><span>shift</span><span>{(d.d * 100).toFixed(0)}% of max</span></div>
+        <div className="tt-r"><span>A samples</span><span>{d.a}</span></div>
+        <div className="tt-r"><span>B samples</span><span>{d.b}</span></div>
+      </div>
+    );
+  }
   const j: Journey = h.obj;
   return (
     <div className="tooltip" style={style}>
@@ -491,6 +589,19 @@ function Legend() {
           <div className="li"><span className="swatch" style={{ background: 'rgb(255,59,92)' }} /> Death</div>
           <div className="li"><span className="swatch" style={{ background: 'rgb(34,211,238)' }} /> Loot</div>
           <div className="li"><span className="swatch" style={{ background: 'rgb(168,85,247)' }} /> Storm death</div>
+        </>
+      )}
+      {f.showFlow && (
+        <>
+          <div className="li"><span className="swatch sq" style={{ background: 'rgb(255,176,46)' }} /> One-way route</div>
+          <div className="li"><span className="swatch sq" style={{ background: 'rgb(34,211,238)' }} /> Mixed flow</div>
+          <div className="li"><span className="swatch sq" style={{ background: 'rgb(72,100,140)' }} /> Milling / churn</div>
+        </>
+      )}
+      {f.showDiff && (
+        <>
+          <div className="li"><span className="swatch sq" style={{ background: 'rgb(255,70,96)' }} /> Busier in A — {METRIC_LABEL[f.cmpA]}</div>
+          <div className="li"><span className="swatch sq" style={{ background: 'rgb(64,140,255)' }} /> Busier in B — {METRIC_LABEL[f.cmpB]}</div>
         </>
       )}
       {f.showDead && <div className="li"><span className="swatch sq" style={{ background: 'rgba(255,59,92,.35)', border: '1px solid rgba(255,59,92,.6)' }} /> Dead zone</div>}

@@ -2,7 +2,10 @@ import { create } from 'zustand';
 import type { Bundle } from './types';
 
 export type Mode = 'replay' | 'aggregate';
-export type HeatMetric = 'traffic' | 'traffic_human' | 'kills' | 'deaths' | 'loot' | 'storm';
+export type HeatMetric =
+  | 'traffic' | 'traffic_human' | 'traffic_bot'
+  | 'traffic_early' | 'traffic_mid' | 'traffic_late'
+  | 'kills' | 'deaths' | 'loot' | 'storm';
 
 export interface Filters {
   mapId: string;
@@ -17,6 +20,16 @@ export interface Filters {
   heatMetric: HeatMetric;
   eventKinds: Record<string, boolean>;
   minHumans: number;
+
+  // --- flow field -----------------------------------------------------
+  showFlow: boolean;
+  /** hide arrows below this coherence so the field reads as routes, not noise */
+  flowMin: number;
+
+  // --- A/B compare ----------------------------------------------------
+  showDiff: boolean;
+  cmpA: HeatMetric;
+  cmpB: HeatMetric;
 }
 
 interface State {
@@ -58,6 +71,11 @@ export const DEFAULT_FILTERS: Filters = {
   heatMetric: 'traffic',
   eventKinds: { kill: true, death: true, loot: true, storm: true },
   minHumans: 0,
+  showFlow: false,
+  flowMin: 0.25,
+  showDiff: false,
+  cmpA: 'traffic_late',
+  cmpB: 'traffic_early',
 };
 
 export const useStore = create<State>((set) => ({
@@ -89,9 +107,20 @@ export const useStore = create<State>((set) => ({
         // Replay    = "what happened in THIS match"               -> paths first.
         showPaths: m === 'replay',
         showHeat: m === 'aggregate',
+        // flow + diff are aggregate-only analyses; a single match has no field
+        showFlow: false,
+        showDiff: false,
       },
     })),
-  patch: (f) => set((s) => ({ filters: { ...s.filters, ...f } })),
+  patch: (f) =>
+    set((s) => {
+      const next = { ...s.filters, ...f };
+      // The diff layer and the heatmap both paint the same cells; showing
+      // both at once produces a colour soup nobody can read. Last one wins.
+      if (f.showDiff && !s.filters.showDiff) next.showHeat = false;
+      if (f.showHeat && !s.filters.showHeat) next.showDiff = false;
+      return { filters: next };
+    }),
   setTime: (t) => set({ time: t }),
   setPlaying: (p) => set({ playing: p }),
   setSpeed: (s) => set({ speed: s }),

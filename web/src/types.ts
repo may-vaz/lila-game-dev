@@ -59,10 +59,29 @@ export interface Grid {
   playable: number[];
   traffic: number[];
   traffic_human: number[];
+  traffic_bot: number[];
+  traffic_early: number[];
+  traffic_mid: number[];
+  traffic_late: number[];
   kills: number[];
   deaths: number[];
   loot: number[];
   storm: number[];
+}
+
+/**
+ * Movement vector field. One entry per cell of an n x n grid, row-major.
+ * dx/dy is a unit direction in UV space (v points UP, screen y points down).
+ * coherence is |sum(v)| / sum(|v|): 1 = everyone crosses the same way,
+ * 0 = players mill about with no net direction.
+ */
+export interface Flow {
+  n: number;
+  dx: number[];
+  dy: number[];
+  coherence: number[];
+  speed: number[];
+  count: number[];
 }
 
 export interface Bundle {
@@ -73,6 +92,7 @@ export interface Bundle {
   journeys: Journey[];
   events: GameEvent[];
   grids: Record<string, Grid>;
+  flow: Record<string, Flow>;
   stats: {
     rows: number;
     matches: number;

@@ -21,8 +21,14 @@ function readUrl() {
   if (q.get('heat')) { f.showHeat = true; f.heatMetric = q.get('heat'); }
   if (q.get('dead') === '1') f.showDead = true;
   if (q.get('nopaths') === '1') f.showPaths = false;
+  if (q.get('noevents') === '1') f.showEvents = false;
   if (q.get('nobots') === '1') f.showBots = false;
   if (q.get('nohumans') === '1') f.showHumans = false;
+  if (q.get('flow')) { f.showFlow = true; f.flowMin = +q.get('flow')!; }
+  if (q.get('cmp')) {
+    const [a, b] = q.get('cmp')!.split('~');
+    if (a && b) { f.showDiff = true; f.showHeat = false; f.cmpA = a; f.cmpB = b; }
+  }
   return { base: b, filters: f, t: q.get('t') ? +q.get('t')! : null };
 }
 
@@ -37,8 +43,11 @@ function writeUrl() {
   if (f.showHeat) q.set('heat', f.heatMetric);
   if (f.showDead) q.set('dead', '1');
   if (!f.showPaths) q.set('nopaths', '1');
+  if (!f.showEvents) q.set('noevents', '1');
   if (!f.showBots) q.set('nobots', '1');
   if (!f.showHumans) q.set('nohumans', '1');
+  if (f.showFlow) q.set('flow', f.flowMin.toFixed(2));
+  if (f.showDiff) q.set('cmp', `${f.cmpA}~${f.cmpB}`);
   if (s.mode === 'replay' && s.time > 0) q.set('t', s.time.toFixed(1));
   history.replaceState(null, '', `${location.pathname}?${q}`);
 }
@@ -103,6 +112,8 @@ export default function App() {
         case '2': s.patch({ showEvents: !f.showEvents }); break;
         case '3': s.patch({ showHeat: !f.showHeat }); break;
         case '4': s.patch({ showDead: !f.showDead }); break;
+        case '5': s.patch({ showFlow: !f.showFlow }); break;
+        case '6': s.patch({ showDiff: !f.showDiff }); break;
         case 'h': case 'H': s.patch({ showHumans: !f.showHumans }); break;
         case 'b': case 'B': s.patch({ showBots: !f.showBots }); break;
         case 'r': case 'R': s.setMode(s.mode === 'replay' ? 'aggregate' : 'replay'); break;
@@ -196,6 +207,7 @@ export default function App() {
               ['← →', 'Step 1 second'],
               ['Shift + ← →', 'Jump 10 seconds'],
               ['1 / 2 / 3 / 4', 'Toggle journeys / events / heatmap / dead zones'],
+              ['5 / 6', 'Toggle flow field / compare A-B'],
               ['H / B', 'Toggle humans / bots'],
               ['R', 'Switch Aggregate ⇄ Replay'],
               ['Shift + drag', 'Measure a region on the map'],

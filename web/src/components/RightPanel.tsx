@@ -47,6 +47,33 @@ export default function RightPanel() {
     return { ...c, humans, bots, avgDur: matches.length ? dur / matches.length : 0 };
   }, [events, journeys, matches]);
 
+  // Flow-field summary: how much of the movement on this map is committed
+  // travel vs aimless churn. Computed over cells that cleared the pipeline's
+  // minimum-sample bar, so it is not dominated by single-visit cells.
+  const flowStats = useMemo(() => {
+    const fl = bundle.flow?.[f.mapId];
+    if (!fl) return null;
+    let live = 0, oneWay = 0, churn = 0, wSum = 0, wTot = 0, spd = 0;
+    for (let i = 0; i < fl.count.length; i++) {
+      const n = fl.count[i];
+      if (!n) continue;
+      live++;
+      const c = fl.coherence[i];
+      if (c >= 0.7) oneWay++;
+      if (c < 0.3) churn++;
+      wSum += c * n; wTot += n; spd += fl.speed[i] * n;
+    }
+    if (!live) return null;
+    return {
+      live,
+      oneWay,
+      churn,
+      meanCoherence: wTot ? wSum / wTot : 0,
+      meanSpeed: wTot ? spd / wTot : 0,
+      transitions: wTot,
+    };
+  }, [bundle, f.mapId]);
+
   // dead-zone share of the map
   const deadPct = useMemo(() => {
     const g = bundle.grids[f.mapId];
@@ -190,6 +217,25 @@ export default function RightPanel() {
               );
             })()}
           </div>
+
+          {flowStats && (
+            <div className="sect">
+              <h3>Movement character</h3>
+              <div className="metric-grid" style={{ marginBottom: 9 }}>
+                <Metric label="Mean coherence" value={flowStats.meanCoherence.toFixed(2)} accent />
+                <Metric label="Mean speed" value={`${flowStats.meanSpeed.toFixed(1)} u/s`} />
+                <Metric label="One-way cells" value={`${flowStats.oneWay}`} />
+                <Metric label="Churn cells" value={`${flowStats.churn}`} />
+              </div>
+              <div className="note">
+                Coherence is the share of travel that points the same way.{' '}
+                <b>{((flowStats.churn / flowStats.live) * 100).toFixed(0)}%</b> of active cells are
+                churn (players milling, not transiting) against{' '}
+                <b>{((flowStats.oneWay / flowStats.live) * 100).toFixed(0)}%</b> true routes —
+                turn on the <b>Flow field</b> layer to see which is which.
+              </div>
+            </div>
+          )}
 
           <div className="sect">
             <h3>Map utilisation</h3>
