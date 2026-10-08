@@ -608,7 +608,7 @@ def build_spawns(df: pd.DataFrame, journeys: list, match_map: dict):
     That makes spawn a controlled variable, which makes the obvious question
     answerable: crossed against the inferred run outcome from build_exfil,
     does where you start change whether you get out? On Lockdown the answer
-    is a 4.4x spread across spawns, which is a balance defect rather than
+    is a 6.4x spread across spawns, which is a balance defect rather than
     variance.
 
     Small-n is the real hazard here, so every zone carries its run count and
