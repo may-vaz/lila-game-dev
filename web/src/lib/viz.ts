@@ -215,3 +215,36 @@ export const METRIC_LABEL: Record<string, string> = {
   loot: 'Loot',
   storm: 'Storm deaths',
 };
+
+// ---------------------------------------------------------------------------
+// Inferred run outcomes
+// ---------------------------------------------------------------------------
+
+export const OUTCOME_COLOR: Record<string, [number, number, number]> = {
+  x: [52, 211, 153],   // extracted - emerald
+  d: [255, 59, 92],    // died      - red
+  '?': [148, 163, 184], // unresolved
+  b: [100, 116, 139],  // bot
+};
+
+export const OUTCOME_LABEL: Record<string, string> = {
+  x: 'Extracted (inferred)',
+  d: 'Died',
+  '?': 'Unresolved',
+  b: 'Bot',
+};
+
+export const EXFIL_COLOR: [number, number, number] = [52, 211, 153];
+
+/** Format a Poisson tail probability for display without pretending to more precision than we have. */
+export function fmtP(p: number): string {
+  if (p === 0) return 'p < 1e-16';
+  if (p < 1e-4) return `p ≈ ${p.toExponential(0)}`;
+  return `p ≈ ${p.toFixed(4)}`;
+}
+
+export const STATUS_COLOR: Record<string, string> = {
+  ok: '#34d399',
+  warn: '#ffb02e',
+  critical: '#ff3b5c',
+};

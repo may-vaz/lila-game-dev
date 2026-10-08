@@ -30,6 +30,11 @@ export interface Filters {
   showDiff: boolean;
   cmpA: HeatMetric;
   cmpB: HeatMetric;
+
+  // --- exfil ----------------------------------------------------------
+  showExfil: boolean;
+  /** colour journeys by inferred outcome instead of by human/bot */
+  colorByOutcome: boolean;
 }
 
 interface State {
@@ -43,6 +48,7 @@ interface State {
   speed: number;
   selectedJourney: number | null;
   hover: unknown | null;
+  scorecardOpen: boolean;
   region: [number, number, number, number] | null; // u0,v0,u1,v1
   debug: boolean;
 
@@ -56,6 +62,7 @@ interface State {
   select: (i: number | null) => void;
   setRegion: (r: [number, number, number, number] | null) => void;
   toggleDebug: () => void;
+  setScorecard: (o: boolean) => void;
 }
 
 export const DEFAULT_FILTERS: Filters = {
@@ -76,6 +83,8 @@ export const DEFAULT_FILTERS: Filters = {
   showDiff: false,
   cmpA: 'traffic_late',
   cmpB: 'traffic_early',
+  showExfil: false,
+  colorByOutcome: false,
 };
 
 export const useStore = create<State>((set) => ({
@@ -89,6 +98,7 @@ export const useStore = create<State>((set) => ({
   speed: 4,
   selectedJourney: null,
   hover: null,
+  scorecardOpen: false,
   region: null,
   debug: false,
 
@@ -127,4 +137,5 @@ export const useStore = create<State>((set) => ({
   select: (i) => set({ selectedJourney: i }),
   setRegion: (r) => set({ region: r }),
   toggleDebug: () => set((s) => ({ debug: !s.debug })),
+  setScorecard: (o) => set({ scorecardOpen: o }),
 }));

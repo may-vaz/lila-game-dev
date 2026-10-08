@@ -32,8 +32,12 @@ export interface MatchMeta {
   counts: Partial<Record<EventKind, number>>;
 }
 
+/** Inferred run outcome: x = extracted, d = died, ? = neither, b = bot */
+export type Outcome = 'x' | 'd' | '?' | 'b';
+
 export interface Journey {
   i: number;
+  o: Outcome;
   m: string;
   u: string;
   b: 0 | 1;
@@ -84,6 +88,54 @@ export interface Flow {
   count: number[];
 }
 
+/** A recovered extraction point. See ARCHITECTURE.md section 3c. */
+export interface ExfilZone {
+  u: number;
+  v: number;
+  cells: number;
+  exits: number;
+  /** exits traffic alone would predict at this location */
+  expected: number;
+  /** exits / expected */
+  ratio: number;
+  /** how many of those runs ended in a death event anyway */
+  deaths: number;
+  /** Poisson P(X >= exits | expected) */
+  p: number;
+  median_run: number;
+}
+
+export interface Exfil {
+  grid: number;
+  zones: ExfilZone[];
+  journeys: number;
+  extracted: number;
+  died: number;
+  unknown: number;
+  rate: number;
+}
+
+export interface ScorecardRow {
+  key: string;
+  label: string;
+  unit: string;
+  value: number;
+  status: 'ok' | 'warn' | 'critical';
+  warn: number;
+  crit: number;
+  higher: boolean;
+  why: string;
+}
+
+export interface Scorecard {
+  matches: number;
+  rows: ScorecardRow[];
+  flags: number;
+  critical: number;
+  kills_per_match: number;
+  median_duration: number;
+}
+
 export interface Bundle {
   generated: string;
   maps: Record<string, MapMeta>;
@@ -93,6 +145,8 @@ export interface Bundle {
   events: GameEvent[];
   grids: Record<string, Grid>;
   flow: Record<string, Flow>;
+  exfil: Record<string, Exfil>;
+  scorecard: Record<string, Scorecard>;
   stats: {
     rows: number;
     matches: number;

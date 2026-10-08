@@ -4,6 +4,7 @@ import type { Bundle } from './types';
 import MapView from './components/MapView';
 import LeftPanel from './components/LeftPanel';
 import RightPanel from './components/RightPanel';
+import Scorecard from './components/Scorecard';
 import Timeline from './components/Timeline';
 import { fmtNum } from './lib/viz';
 import './theme.css';
@@ -12,6 +13,7 @@ import './theme.css';
 function readUrl() {
   const q = new URLSearchParams(location.search);
   const b: any = {};
+  if (q.get('sc') === '1') b.scorecard = true;
   const mode = q.get('mode');
   if (mode === 'replay' || mode === 'aggregate') b.mode = mode;
   const f: any = {};
@@ -22,6 +24,8 @@ function readUrl() {
   if (q.get('dead') === '1') f.showDead = true;
   if (q.get('nopaths') === '1') f.showPaths = false;
   if (q.get('noevents') === '1') f.showEvents = false;
+  if (q.get('exfil') === '1') f.showExfil = true;
+  if (q.get('outcome') === '1') f.colorByOutcome = true;
   if (q.get('nobots') === '1') f.showBots = false;
   if (q.get('nohumans') === '1') f.showHumans = false;
   if (q.get('flow')) { f.showFlow = true; f.flowMin = +q.get('flow')!; }
@@ -44,6 +48,8 @@ function writeUrl() {
   if (f.showDead) q.set('dead', '1');
   if (!f.showPaths) q.set('nopaths', '1');
   if (!f.showEvents) q.set('noevents', '1');
+  if (f.showExfil) q.set('exfil', '1');
+  if (f.colorByOutcome) q.set('outcome', '1');
   if (!f.showBots) q.set('nobots', '1');
   if (!f.showHumans) q.set('nohumans', '1');
   if (f.showFlow) q.set('flow', f.flowMin.toFixed(2));
@@ -87,6 +93,7 @@ export default function App() {
         patch(init);
         if (t != null) useStore.getState().setTime(t);
         setBundle(b);
+        if (base.scorecard) useStore.getState().setScorecard(true);
       })
       .catch((e) => setError(String(e)));
   }, [setBundle, setError, patch, setMode]);
@@ -114,11 +121,14 @@ export default function App() {
         case '4': s.patch({ showDead: !f.showDead }); break;
         case '5': s.patch({ showFlow: !f.showFlow }); break;
         case '6': s.patch({ showDiff: !f.showDiff }); break;
+        case '7': s.patch({ showExfil: !f.showExfil }); break;
         case 'h': case 'H': s.patch({ showHumans: !f.showHumans }); break;
         case 'b': case 'B': s.patch({ showBots: !f.showBots }); break;
         case 'r': case 'R': s.setMode(s.mode === 'replay' ? 'aggregate' : 'replay'); break;
+        case 'm': case 'M': s.setScorecard(!s.scorecardOpen); break;
+        case 'o': case 'O': s.patch({ colorByOutcome: !f.colorByOutcome }); break;
         case 'd': case 'D': if (e.ctrlKey || e.metaKey) { e.preventDefault(); toggleDebug(); } break;
-        case 'Escape': s.setRegion(null); s.select(null); setHelp(false); break;
+        case 'Escape': s.setRegion(null); s.select(null); setHelp(false); s.setScorecard(false); break;
         case '?': setHelp((v) => !v); break;
       }
     };
@@ -198,6 +208,8 @@ export default function App() {
         <RightPanel />
       </div>
 
+      <Scorecard />
+
       {help && (
         <div className="help" onClick={() => setHelp(false)}>
           <div className="card" onClick={(e) => e.stopPropagation()}>
@@ -207,7 +219,9 @@ export default function App() {
               ['← →', 'Step 1 second'],
               ['Shift + ← →', 'Jump 10 seconds'],
               ['1 / 2 / 3 / 4', 'Toggle journeys / events / heatmap / dead zones'],
-              ['5 / 6', 'Toggle flow field / compare A-B'],
+              ['5 / 6 / 7', 'Toggle flow field / compare A-B / exfil zones'],
+              ['M', 'Map health scorecard'],
+              ['O', 'Colour journeys by inferred outcome'],
               ['H / B', 'Toggle humans / bots'],
               ['R', 'Switch Aggregate ⇄ Replay'],
               ['Shift + drag', 'Measure a region on the map'],

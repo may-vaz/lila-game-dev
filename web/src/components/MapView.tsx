@@ -9,7 +9,7 @@ import { useStore } from '../store';
 import { useFiltered } from '../lib/useFiltered';
 import {
   SIZE, toPx, EVENT_COLORS, EVENT_LABEL, HUMAN_COLOR, BOT_COLOR, HEAT_RANGE, fmtTime, shortId,
-  buildArrows, diffGrids, diffColor, METRIC_LABEL,
+  buildArrows, diffGrids, diffColor, METRIC_LABEL, OUTCOME_COLOR, EXFIL_COLOR, fmtP,
 } from '../lib/viz';
 import type { GameEvent, Journey } from '../types';
 
@@ -21,7 +21,7 @@ function fitZoom(w: number, h: number) {
   return Math.log2((Math.min(w, h) * 0.94) / SIZE);
 }
 
-interface Hover { x: number; y: number; obj: any; kind: 'event' | 'path' | 'cell' | 'flow' | 'diff' }
+interface Hover { x: number; y: number; obj: any; kind: 'event' | 'path' | 'cell' | 'flow' | 'diff' | 'exfil' }
 
 export default function MapView() {
   const bundle = useStore((s) => s.bundle)!;
@@ -80,6 +80,7 @@ export default function MapView() {
   const meta = bundle.maps[f.mapId];
   const grid = bundle.grids[f.mapId];
   const flow = bundle.flow?.[f.mapId];
+  const exfil = bundle.exfil?.[f.mapId];
 
   // -------------------------------------------------------------- layers
   const layers = useMemo(() => {
@@ -231,6 +232,66 @@ export default function MapView() {
       );
     }
 
+    // 3d. inferred exfil zones --------------------------------------------
+    // Recovered from exit clustering, not read from an event - see
+    // ARCHITECTURE.md section 3c. Rendered as a ring rather than a solid
+    // marker to keep it visually distinct from recorded events, because it
+    // is an inference and should not be mistaken for ground truth.
+    if (f.showExfil && exfil && exfil.zones.length) {
+      const z = exfil.zones;
+      const maxExits = Math.max(...z.map((d) => d.exits));
+      L.push(
+        new ScatterplotLayer({
+          id: `exfil-halo-${f.mapId}`,
+          data: z,
+          coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+          getPosition: (d: any) => toPx(d.u, d.v),
+          getRadius: (d: any) => 11 + 17 * Math.sqrt(d.exits / maxExits),
+          radiusUnits: 'pixels',
+          filled: true,
+          getFillColor: [...EXFIL_COLOR, 38] as any,
+          pickable: false,
+        }),
+      );
+      L.push(
+        new ScatterplotLayer({
+          id: `exfil-${f.mapId}`,
+          data: z,
+          coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+          getPosition: (d: any) => toPx(d.u, d.v),
+          getRadius: (d: any) => 11 + 17 * Math.sqrt(d.exits / maxExits),
+          radiusUnits: 'pixels',
+          filled: false,
+          stroked: true,
+          getLineColor: [...EXFIL_COLOR, 235] as any,
+          getLineWidth: 2,
+          lineWidthUnits: 'pixels',
+          pickable: true,
+          onHover: (i: any) =>
+            setHover(i.object ? { x: i.x, y: i.y, obj: i.object, kind: 'exfil' } : null),
+        }),
+      );
+      L.push(
+        new TextLayer({
+          id: `exfil-label-${f.mapId}`,
+          data: z,
+          coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+          getPosition: (d: any) => toPx(d.u, d.v),
+          getText: (d: any) => `EXFIL · ${d.exits}`,
+          getSize: 10,
+          sizeUnits: 'pixels',
+          getColor: [...EXFIL_COLOR, 255] as any,
+          getPixelOffset: [0, -26],
+          fontFamily: 'ui-monospace, monospace',
+          characterSet: 'auto',
+          background: true,
+          getBackgroundColor: [8, 12, 20, 190],
+          backgroundPadding: [5, 2, 5, 2],
+          pickable: false,
+        } as any),
+      );
+    }
+
     // 4. paths -----------------------------------------------------------
     if (f.showPaths && !inReplay) {
       // Aggregate mode: static full journeys. Bots dimmed + thinner.
@@ -247,6 +308,8 @@ export default function MapView() {
           getColor: (d: any) =>
             d.j.i === selected
               ? [255, 122, 26, 255]
+              : f.colorByOutcome
+              ? [...OUTCOME_COLOR[d.j.o ?? '?'], d.j.b ? 42 : 130]
               : d.j.b
               ? [...BOT_COLOR, 42]
               : [...HUMAN_COLOR, 120],
@@ -281,7 +344,13 @@ export default function MapView() {
           getPath: (d: any) => d.path,
           getTimestamps: (d: any) => d.ts,
           getColor: (d: any) =>
-            d.j.i === selected ? [255, 122, 26] : d.j.b ? BOT_COLOR : HUMAN_COLOR,
+            d.j.i === selected
+              ? [255, 122, 26]
+              : f.colorByOutcome
+              ? OUTCOME_COLOR[d.j.o ?? '?']
+              : d.j.b
+              ? BOT_COLOR
+              : HUMAN_COLOR,
           getWidth: (d: any) => (d.j.i === selected ? 3.2 : d.j.b ? 1.2 : 2),
           widthUnits: 'pixels',
           widthMinPixels: 1.2,
@@ -423,7 +492,7 @@ export default function MapView() {
     }
 
     return L;
-  }, [bundle, f, mode, time, journeys, events, selected, region, live, debug, meta, grid, flow, select]);
+  }, [bundle, f, mode, time, journeys, events, selected, region, live, debug, meta, grid, flow, exfil, select]);
 
   // ---------------------------------------------------------------- drag
   const unproject = useCallback((info: any): [number, number] | null => {
@@ -553,6 +622,19 @@ function Tooltip({ h }: { h: Hover }) {
       </div>
     );
   }
+  if (h.kind === 'exfil') {
+    const z = h.obj;
+    return (
+      <div className="tooltip" style={style}>
+        <div className="tt-h">Inferred exfil zone</div>
+        <div className="tt-r"><span>runs ended here</span><span>{z.exits}</span></div>
+        <div className="tt-r"><span>traffic predicts</span><span>{z.expected.toFixed(1)}</span></div>
+        <div className="tt-r"><span>excess</span><span>{z.ratio}× · {fmtP(z.p)}</span></div>
+        <div className="tt-r"><span>died anyway</span><span>{z.deaths} ({((z.deaths / z.exits) * 100).toFixed(0)}%)</span></div>
+        <div className="tt-r"><span>median run</span><span>{fmtTime(z.median_run)}</span></div>
+      </div>
+    );
+  }
   if (h.kind === 'diff') {
     const d = h.obj;
     return (
@@ -589,6 +671,16 @@ function Legend() {
           <div className="li"><span className="swatch" style={{ background: 'rgb(255,59,92)' }} /> Death</div>
           <div className="li"><span className="swatch" style={{ background: 'rgb(34,211,238)' }} /> Loot</div>
           <div className="li"><span className="swatch" style={{ background: 'rgb(168,85,247)' }} /> Storm death</div>
+        </>
+      )}
+      {f.showExfil && (
+        <div className="li"><span className="swatch" style={{ background: 'transparent', boxShadow: 'inset 0 0 0 2px rgb(52,211,153)' }} /> Inferred exfil</div>
+      )}
+      {f.colorByOutcome && (
+        <>
+          <div className="li"><span className="swatch" style={{ background: 'rgb(52,211,153)' }} /> Extracted (inferred)</div>
+          <div className="li"><span className="swatch" style={{ background: 'rgb(255,59,92)' }} /> Died</div>
+          <div className="li"><span className="swatch" style={{ background: 'rgb(148,163,184)' }} /> Unresolved</div>
         </>
       )}
       {f.showFlow && (

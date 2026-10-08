@@ -218,6 +218,30 @@ export default function RightPanel() {
             })()}
           </div>
 
+          {(() => {
+            const ex = bundle.exfil?.[f.mapId];
+            if (!ex) return null;
+            const pct = (v: number) => ((v / Math.max(ex.journeys, 1)) * 100).toFixed(1);
+            return (
+              <div className="sect">
+                <h3>Run outcomes <sup className="inf">inferred</sup></h3>
+                <div className="metric-grid" style={{ marginBottom: 9 }}>
+                  <Metric label="Extraction rate" value={`${(ex.rate * 100).toFixed(1)}%`} accent />
+                  <Metric label="Exfil zones" value={`${ex.zones.length}`} />
+                </div>
+                <Bar label="Extracted" value={ex.extracted} total={ex.journeys} color="#34d399" />
+                <Bar label="Died" value={ex.died} total={ex.journeys} color="#ff3b5c" />
+                <Bar label="Unresolved" value={ex.unknown} total={ex.journeys} color="#64748b" />
+                <div className="note" style={{ marginTop: 9 }}>
+                  The dataset records no extraction event. {pct(ex.extracted)}% of runs end inside a
+                  statistically detected exfil zone — see <b>ARCHITECTURE.md §3c</b>. The{' '}
+                  {pct(ex.unknown)}% unresolved are runs that neither died nor reached a known zone:
+                  disconnects, backgrounded apps, or exfil points too rarely used to clear the bar.
+                </div>
+              </div>
+            );
+          })()}
+
           {flowStats && (
             <div className="sect">
               <h3>Movement character</h3>

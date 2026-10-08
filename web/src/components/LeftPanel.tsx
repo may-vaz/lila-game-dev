@@ -3,6 +3,15 @@ import type { HeatMetric } from '../store';
 import { useFiltered } from '../lib/useFiltered';
 import { fmtTime, fmtNum, shortId, METRIC_LABEL } from '../lib/viz';
 
+function Metric({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
+  return (
+    <div className={`metric ${accent ? 'accent' : ''}`}>
+      <div className="lbl">{label}</div>
+      <div className="val sm">{value}</div>
+    </div>
+  );
+}
+
 const HEAT_OPTIONS: { v: HeatMetric; l: string }[] = [
   { v: 'traffic', l: 'Traffic — all players' },
   { v: 'traffic_human', l: 'Traffic — humans only' },
@@ -49,6 +58,9 @@ export default function LeftPanel() {
   const setRegion = useStore((s) => s.setRegion);
   const select = useStore((s) => s.select);
   const { matches, match, events, journeys } = useFiltered();
+  const setScorecard = useStore((s) => s.setScorecard);
+  const exfil = bundle.exfil?.[f.mapId];
+  const card = bundle.scorecard?.[f.mapId];
 
   const counts = events.reduce<Record<string, number>>((a, e) => {
     a[e.k] = (a[e.k] ?? 0) + 1;
@@ -57,6 +69,19 @@ export default function LeftPanel() {
 
   return (
     <div className="panel left">
+      {card && (
+        <div className="sect">
+          <button className="btn sc-open" onClick={() => setScorecard(true)}>
+            <span>Map health</span>
+            <span className="sc-chips">
+              {card.critical > 0 && <em className="crit">{card.critical}</em>}
+              {card.flags - card.critical > 0 && <em className="warn">{card.flags - card.critical}</em>}
+              {card.flags === 0 && <em className="ok">clear</em>}
+            </span>
+          </button>
+        </div>
+      )}
+
       <div className="sect">
         <h3>Scope</h3>
 
@@ -155,6 +180,12 @@ export default function LeftPanel() {
         <Row on={f.showDiff} onClick={() => patch({ showDiff: !f.showDiff })} k="6">
           Compare A/B
         </Row>
+        <Row on={f.showExfil} onClick={() => patch({ showExfil: !f.showExfil })} count={exfil?.zones.length} k="7">
+          Exfil zones <sup className="inf">inferred</sup>
+        </Row>
+        <Row on={f.colorByOutcome} onClick={() => patch({ colorByOutcome: !f.colorByOutcome })} k="O">
+          Colour by outcome
+        </Row>
 
         {f.showHeat && (
           <div className="field" style={{ marginTop: 9 }}>
@@ -167,6 +198,28 @@ export default function LeftPanel() {
           </div>
         )}
       </div>
+
+      {f.showExfil && exfil && (
+        <div className="sect">
+          <h3>Exfil zones <sup className="inf">inferred</sup></h3>
+          <div className="note" style={{ marginBottom: 9 }}>
+            The telemetry has no <code>Extracted</code> event. These are recovered
+            statistically: locations where far more runs end than traffic predicts.
+            Players ending inside one die <b>~1%</b> of the time; everyone else dies{' '}
+            <b>~80%</b> of the time.
+          </div>
+          <div className="metric-grid" style={{ marginBottom: 9 }}>
+            <Metric label="Extraction rate" value={`${(exfil.rate * 100).toFixed(1)}%`} accent />
+            <Metric label="Zones found" value={`${exfil.zones.length}`} />
+          </div>
+          {exfil.zones.slice(0, 6).map((z, i) => (
+            <div className="row static" key={i}>
+              <span className="nm">Zone {i + 1} · {z.ratio}× expected</span>
+              <span className="ct">{z.exits}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {f.showFlow && (
         <div className="sect">
