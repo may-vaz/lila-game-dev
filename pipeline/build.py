@@ -84,6 +84,7 @@ MIN_FLOW_SAMPLES = 6  # cells with fewer transitions than this are too noisy to 
 EXFIL_GRID = 48       # grid used to cluster session-exit locations
 EXFIL_MIN_EXITS = 4   # a zone needs at least this many exits to be called a zone
 EXFIL_MIN_RATIO = 6.0 # ...and this many times more exits than traffic predicts
+MIN_SPAWN_RUNS = 10   # below this a spawn's extraction rate is noise, not a ranking
 STORM_FIRST_DEATH = 655  # earliest KilledByStorm anywhere in the dataset, in seconds
 
 
@@ -594,6 +595,102 @@ def build_exfil(df: pd.DataFrame, events: list, journeys: list):
     return out
 
 
+def build_spawns(df: pd.DataFrame, journeys: list, match_map: dict):
+    """
+    Spawn points, and whether the one you get decides how your run ends.
+
+    Clustering the FIRST position of every human journey the same way
+    build_exfil clusters the last one produces a surprise: entries land in
+    only 11-19 cells per map, at 30-57x the rate traffic predicts. LILA BLACK
+    does not free-drop players the way a battle royale does - it uses a small
+    set of fixed spawn points.
+
+    That makes spawn a controlled variable, which makes the obvious question
+    answerable: crossed against the inferred run outcome from build_exfil,
+    does where you start change whether you get out? On Lockdown the answer
+    is a 4.4x spread across spawns, which is a balance defect rather than
+    variance.
+
+    Small-n is the real hazard here, so every zone carries its run count and
+    the client refuses to rank anything below MIN_SPAWN_RUNS.
+    """
+    n = EXFIL_GRID
+    out = {}
+    jby = {}
+    for j in journeys:
+        jby.setdefault(j["m"], []).append(j)
+
+    for map_id in sorted(df["map_id"].unique()):
+        human = [
+            j for m, js in jby.items() if match_map.get(m) == map_id
+            for j in js if not j["b"] and len(j["t"]) >= 3
+        ]
+        if len(human) < 20:
+            continue
+
+        occupancy = np.zeros((n, n))
+        entries = np.zeros((n, n))
+        for j in human:
+            ix = np.clip((np.asarray(j["x"]) * n).astype(int), 0, n - 1)
+            iy = np.clip((np.asarray(j["y"]) * n).astype(int), 0, n - 1)
+            np.add.at(occupancy, (iy, ix), 1)
+            entries[iy[0], ix[0]] += 1
+
+        expected = occupancy / max(occupancy.sum(), 1) * entries.sum()
+        hot = (entries >= 3) & (entries >= 5 * np.maximum(expected, 1e-9))
+
+        label = -np.ones((n, n), dtype=int)
+        zones = []
+        for sy in range(n):
+            for sx in range(n):
+                if not hot[sy, sx] or label[sy, sx] >= 0:
+                    continue
+                zid = len(zones); stack = [(sy, sx)]; cells = []
+                label[sy, sx] = zid
+                while stack:
+                    cy, cx = stack.pop(); cells.append((cy, cx))
+                    for dy in (-1, 0, 1):
+                        for dx in (-1, 0, 1):
+                            ny_, nx_ = cy + dy, cx + dx
+                            if 0 <= ny_ < n and 0 <= nx_ < n and hot[ny_, nx_] and label[ny_, nx_] < 0:
+                                label[ny_, nx_] = zid; stack.append((ny_, nx_))
+                zones.append(cells)
+
+        zone_list = []
+        for zid, cells in enumerate(zones):
+            runs = [j for j in human
+                    if label[int(np.clip(j["y"][0] * n, 0, n - 1)),
+                             int(np.clip(j["x"][0] * n, 0, n - 1))] == zid]
+            if not runs:
+                continue
+            ent = sum(entries[c] for c in cells)
+            cu = sum(((c[1] + 0.5) / n) * entries[c] for c in cells) / ent
+            cv = sum(((c[0] + 0.5) / n) * entries[c] for c in cells) / ent
+            ex = sum(1 for j in runs if j.get("o") == "x")
+            dd = sum(1 for j in runs if j.get("o") == "d")
+            durs = [j["t"][-1] - j["t"][0] for j in runs]
+            zone_list.append({
+                "u": round(cu, 4), "v": round(cv, 4),
+                "runs": len(runs),
+                "extracted": ex,
+                "died": dd,
+                "rate": round(ex / len(runs), 4),
+                "median_run": round(float(np.median(durs)), 1),
+            })
+        zone_list.sort(key=lambda z: -z["runs"])
+
+        ranked = [z for z in zone_list if z["runs"] >= MIN_SPAWN_RUNS]
+        spread = (max(z["rate"] for z in ranked) / max(min(z["rate"] for z in ranked), 1e-9)) if len(ranked) > 1 else 1.0
+        out[map_id] = {
+            "grid": n,
+            "zones": zone_list,
+            "ranked": len(ranked),
+            "min_runs": MIN_SPAWN_RUNS,
+            "spread": round(float(min(spread, 99)), 2),
+        }
+    return out
+
+
 def build_flow(df: pd.DataFrame):
     """
     Movement vector field ("map flow").
@@ -757,6 +854,11 @@ def main():
                 j["o"] = {"extracted": "x", "died": "d", "unknown": "?"}[oc[j["i"]]]
     for j in journeys:
         j.setdefault("o", "b" if j["b"] else "?")
+    _mm = {mid: g["map_id"].iloc[0] for mid, g in df.groupby("match_key")}
+    spawns = build_spawns(df, journeys, _mm)
+    for mp, sp in spawns.items():
+        print(f"      {mp}: {len(sp['zones'])} spawn points, "
+              f"{sp['spread']}x extraction-rate spread across {sp['ranked']} ranked")
     scorecard = build_scorecard(df, matches, grids, flow, exfil)
     for mp, ex in exfil.items():
         print(f"      {mp}: {len(ex['zones'])} exfil zones, "
@@ -786,6 +888,7 @@ def main():
         "grids": grids,
         "flow": flow,
         "exfil": exfil,
+        "spawns": spawns,
         "scorecard": scorecard,
         "stats": {
             "rows": int(len(df)),

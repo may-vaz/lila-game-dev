@@ -35,6 +35,12 @@ export interface Filters {
   showExfil: boolean;
   /** colour journeys by inferred outcome instead of by human/bot */
   colorByOutcome: boolean;
+
+  // --- spawn / run funnel ---------------------------------------------
+  showSpawns: boolean;
+
+  // --- loot economy ---------------------------------------------------
+  showEconomy: boolean;
 }
 
 interface State {
@@ -85,6 +91,8 @@ export const DEFAULT_FILTERS: Filters = {
   cmpB: 'traffic_early',
   showExfil: false,
   colorByOutcome: false,
+  showSpawns: false,
+  showEconomy: false,
 };
 
 export const useStore = create<State>((set) => ({
@@ -120,6 +128,7 @@ export const useStore = create<State>((set) => ({
         // flow + diff are aggregate-only analyses; a single match has no field
         showFlow: false,
         showDiff: false,
+        showEconomy: false,
       },
     })),
   patch: (f) =>
@@ -127,8 +136,12 @@ export const useStore = create<State>((set) => ({
       const next = { ...s.filters, ...f };
       // The diff layer and the heatmap both paint the same cells; showing
       // both at once produces a colour soup nobody can read. Last one wins.
-      if (f.showDiff && !s.filters.showDiff) next.showHeat = false;
-      if (f.showHeat && !s.filters.showHeat) next.showDiff = false;
+      // The diff, heatmap and economy layers all paint the same cells.
+      // Only one cell-fill layer may be on at a time; last one wins.
+      const fills = ['showHeat', 'showDiff', 'showEconomy'] as const;
+      for (const on of fills) {
+        if (f[on] && !s.filters[on]) for (const off of fills) if (off !== on) next[off] = false;
+      }
       return { filters: next };
     }),
   setTime: (t) => set({ time: t }),

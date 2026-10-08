@@ -1,6 +1,6 @@
 # What I learned about LILA BLACK
 
-The brief asked for three. Five are here: the fourth and fifth came out of layers built after the first pass, and both change what to do about the earlier ones. Insight 5 in particular retracts something I wrote in Insight 3.
+The brief asked for three. Six are here: the fourth and fifth came out of layers built after the first pass, and both change what to do about the earlier ones. Insight 5 in particular retracts something I wrote in Insight 3, and Insight 6 came from running Insight 5's method backwards.
 
 All figures are from the full dataset — **1,243 files, 89,104 rows, 796 matches, 245 humans, 94 bots, Feb 9–14 2026 (UTC)** — read through the tool in this repo. Every claim below is reproducible from a link in the tool itself.
 
@@ -259,3 +259,99 @@ Extraction points are the highest-stakes geometry in an extraction shooter: they
 
 - `?mode=aggregate&map=AmbroseValley&exfil=1&outcome=1&nopaths=1&noevents=1` — the zones, sized by usage.
 - Press `O` in any view to recolour journeys by inferred outcome; press `M` for the map health scorecard.
+
+---
+
+## Insight 6 — LILA BLACK has fixed spawn points, and on Lockdown the one you get is worth a 6.4× swing in whether you survive
+
+### What caught my eye
+
+Insight 5 found where runs *end* by clustering last positions. The obvious
+control was to run the same clustering on **first** positions — I expected a
+diffuse cloud, because that is what a battle-royale drop looks like.
+
+Instead, entries collapsed into a handful of points:
+
+| Map | Human runs | Distinct entry cells | Top 5 cells hold | Peak cell vs traffic-expected |
+|---|---|---|---|---|
+| Ambrose Valley | 552 | 19 | 57 % | **50×** |
+| Grand Rift | 57 | 11 | 70 % | **57×** |
+| Lockdown | 167 | 15 | 60 % | **42×** |
+
+That is not a drop plane. **LILA BLACK assigns players to a small set of fixed
+spawn points** (7, 5 and 9 clustered zones respectively). I had assumed
+battle-royale free drop and was wrong.
+
+![Lockdown spawn points coloured by extraction rate](docs/screenshot-spawns.png)
+
+### The evidence
+
+A fixed spawn is an *assigned* variable, not a chosen one — which makes it clean
+to cross-tabulate against the run outcome recovered in Insight 5. Spawns with
+fewer than 10 runs are excluded as unrankable:
+
+**Ambrose Valley — balanced.**
+
+| Spawn | Runs | Extracted | Rate | Median run |
+|---|---|---|---|---|
+| A | 86 | 32 | 37.2 % | 6:15 |
+| B | 76 | 25 | 32.9 % | 6:37 |
+| C | 75 | 25 | 33.3 % | 6:07 |
+| D | 79 | 25 | 31.7 % | 5:37 |
+| E | 82 | 24 | 29.3 % | 6:41 |
+| F | 83 | 23 | 27.7 % | 5:11 |
+| G | 70 | 19 | 27.1 % | 3:52 |
+
+**Spread 1.37×** across 70–86 runs per spawn. That is within noise. Ambrose is
+the control that proves the design *can* be fair.
+
+**Lockdown — not balanced.**
+
+| Spawn | Runs | Extracted | Rate | Median run |
+|---|---|---|---|---|
+| A | 25 | 10 | **40.0 %** | 7:07 |
+| B | 27 | 10 | 37.0 % | 8:53 |
+| C | 14 | 5 | 35.7 % | 7:15 |
+| D | 24 | 6 | 25.0 % | 8:38 |
+| E | 19 | 4 | 21.1 % | 7:38 |
+| F | 19 | 4 | 21.1 % | 5:22 |
+| G | 12 | 1 | 8.3 % | 4:42 |
+| H | 16 | 1 | **6.3 %** | **2:34** |
+
+**Spread 6.4×.** Spawn H is the outlier that matters: 16 runs, 1 extraction, and
+a median run of **2 minutes 34 seconds** against 7:07 at spawn A. Players given
+that spawn lose the run in roughly a third of the time, before loot or routing
+can plausibly be the cause.
+
+The honest caveat: 16 runs is a small sample, and 1/16 carries a wide interval.
+But the *duration* signal is independent of the extraction signal and points the
+same way, and the gap to the next-worst spawn is large. This is strong enough to
+investigate, not yet strong enough to ship a fix against — which is exactly how
+the tool labels it.
+
+### Is it actionable? Yes
+
+**Metrics affected:** extraction rate, median run length, early-session churn,
+and — because this is the first thing a new player experiences — D1 retention.
+
+**Action items**
+
+1. Pull spawn H's coordinates from the tool and walk the first 30 seconds of
+   routing out of it. The 2:34 median says players are dying close to it, so the
+   cause is probably geometry or a hostile neighbour, not a long-run problem.
+2. Compare spawn H against Ambrose's spread. Ambrose achieves 1.37× with seven
+   spawns, so a fair spread is clearly achievable in this game's design — this is
+   a Lockdown-specific defect, not an engine-level constraint.
+3. Instrument the fix properly: re-run this view after any spawn change and
+   check the spread, rather than eyeballing a heatmap.
+4. Raise the sample. 167 human runs across 9 spawns on Lockdown is thin; this
+   analysis wants a few thousand to move from "investigate" to "ship".
+
+### Why a Level Designer should care
+
+Spawn placement is one of the few things on this list that is cheap to change —
+it is a transform in a level file, not a geometry rebuild. And it is the single
+most leveraged position in the game, because every player passes through it and
+it sets up every subsequent decision. A spawn that quietly costs players 85 % of
+their extraction odds is a defect that will never appear in an aggregate heatmap,
+because the heatmap sums over all spawns and averages the problem away.

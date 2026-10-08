@@ -10,7 +10,8 @@ import { useFiltered } from '../lib/useFiltered';
 import {
   SIZE, toPx, EVENT_COLORS, EVENT_LABEL, HUMAN_COLOR, BOT_COLOR, HEAT_RANGE, fmtTime, shortId,
   buildArrows, diffGrids, diffColor, METRIC_LABEL, OUTCOME_COLOR, EXFIL_COLOR, fmtP,
-  coherenceColor, rgbCss,
+  coherenceColor, rgbCss, SPAWN_COLOR, spawnRateColor, buildEconomy,
+  QUADRANT_COLOR, QUADRANT_LABEL,
 } from '../lib/viz';
 import type { GameEvent, Journey } from '../types';
 
@@ -22,7 +23,7 @@ function fitZoom(w: number, h: number) {
   return Math.log2((Math.min(w, h) * 0.94) / SIZE);
 }
 
-interface Hover { x: number; y: number; obj: any; kind: 'event' | 'path' | 'cell' | 'flow' | 'diff' | 'exfil' }
+interface Hover { x: number; y: number; obj: any; kind: 'event' | 'path' | 'cell' | 'flow' | 'diff' | 'exfil' | 'spawn' | 'econ' }
 
 export default function MapView() {
   const bundle = useStore((s) => s.bundle)!;
@@ -82,6 +83,10 @@ export default function MapView() {
   const grid = bundle.grids[f.mapId];
   const flow = bundle.flow?.[f.mapId];
   const exfil = bundle.exfil?.[f.mapId];
+  const spawns = bundle.spawns?.[f.mapId];
+  // Derived on the client from the grid already in the bundle - no extra
+  // payload, and it stays correct if the grid definition ever changes.
+  const econ = useMemo(() => (grid ? buildEconomy(grid) : null), [grid]);
 
   // -------------------------------------------------------------- layers
   const layers = useMemo(() => {
@@ -210,6 +215,35 @@ export default function MapView() {
       );
     }
 
+    // 3b-ii. loot economy --------------------------------------------------
+    // Reward (loot per visit) vs risk (kills+deaths per visit), each split at
+    // the map median, painted as four quadrants. See lib/viz.ts buildEconomy.
+    if (f.showEconomy && econ) {
+      const n = grid.n;
+      const polys = econ.cells.map((c) => {
+        const gx = c.i % n, gy = Math.floor(c.i / n);
+        return {
+          c: [toPx(gx / n, gy / n), toPx((gx + 1) / n, gy / n),
+              toPx((gx + 1) / n, (gy + 1) / n), toPx(gx / n, (gy + 1) / n)],
+          d: c,
+        };
+      });
+      L.push(
+        new PolygonLayer({
+          id: `econ-${f.mapId}`,
+          data: polys,
+          coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+          getPolygon: (d: any) => d.c,
+          getFillColor: (d: any) => [...QUADRANT_COLOR[d.d.q as keyof typeof QUADRANT_COLOR], 165] as any,
+          stroked: false,
+          filled: true,
+          pickable: true,
+          onHover: (i: any) =>
+            setHover(i.object ? { x: i.x, y: i.y, obj: i.object.d, kind: 'econ' } : null),
+        }),
+      );
+    }
+
     // 3c. flow field -------------------------------------------------------
     // Arrows are three line segments each, built on the CPU in lib/viz.ts.
     if (f.showFlow && flow) {
@@ -290,6 +324,56 @@ export default function MapView() {
           backgroundPadding: [5, 2, 5, 2],
           pickable: false,
         } as any),
+      );
+    }
+
+    // 3e. spawn points -----------------------------------------------------
+    // Squares, deliberately unlike the exfil rings: these are observed first
+    // positions, not an inference. Fill encodes the zone's extraction rate on
+    // a fixed 0-45% scale so maps stay comparable, and zones below
+    // spawns.min_runs are drawn hollow because their rate is not yet real.
+    if (f.showSpawns && spawns && spawns.zones.length) {
+      const z = spawns.zones;
+      const maxRuns = Math.max(...z.map((d) => d.runs));
+      const size = (d: any) => 13 + 15 * Math.sqrt(d.runs / maxRuns);
+      L.push(
+        new ScatterplotLayer({
+          id: `spawn-${f.mapId}`,
+          data: z,
+          coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+          getPosition: (d: any) => toPx(d.u, d.v),
+          getRadius: size,
+          radiusUnits: 'pixels',
+          filled: true,
+          stroked: true,
+          getFillColor: (d: any) =>
+            (d.runs >= spawns.min_runs
+              ? [...spawnRateColor(d.rate), 210]
+              : [...SPAWN_COLOR, 30]) as any,
+          getLineColor: (d: any) =>
+            (d.runs >= spawns.min_runs ? [10, 16, 20, 230] : [...SPAWN_COLOR, 190]) as any,
+          getLineWidth: 1.5,
+          lineWidthUnits: 'pixels',
+          pickable: true,
+          updateTriggers: { getFillColor: [f.mapId] },
+          onHover: (i: any) =>
+            setHover(i.object ? { x: i.x, y: i.y, obj: i.object, kind: 'spawn' } : null),
+        }),
+      );
+      L.push(
+        new TextLayer({
+          id: `spawn-label-${f.mapId}`,
+          data: z.filter((d) => d.runs >= spawns.min_runs),
+          coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+          getPosition: (d: any) => toPx(d.u, d.v),
+          getText: (d: any) => `${Math.round(d.rate * 100)}%`,
+          getSize: 10,
+          getColor: [8, 14, 18, 255],
+          fontWeight: 700,
+          getTextAnchor: 'middle',
+          getAlignmentBaseline: 'center',
+          pickable: false,
+        }),
       );
     }
 
@@ -636,6 +720,33 @@ function Tooltip({ h }: { h: Hover }) {
       </div>
     );
   }
+
+  if (h.kind === 'spawn') {
+    const z = h.obj;
+    return (
+      <div className="tooltip" style={style}>
+        <div className="tt-h">Spawn point</div>
+        <div className="tt-r"><span>runs started here</span><span>{z.runs}</span></div>
+        <div className="tt-r"><span>extracted</span><span>{z.extracted} ({(z.rate * 100).toFixed(0)}%)</span></div>
+        <div className="tt-r"><span>died</span><span>{z.died}</span></div>
+        <div className="tt-r"><span>median run</span><span>{fmtTime(z.median_run)}</span></div>
+        {z.runs < 10 && <div className="tt-n">too few runs to rank</div>}
+      </div>
+    );
+  }
+
+  if (h.kind === 'econ') {
+    const c = h.obj;
+    return (
+      <div className="tooltip" style={style}>
+        <div className="tt-h">{QUADRANT_LABEL[c.q as keyof typeof QUADRANT_LABEL]}</div>
+        <div className="tt-r"><span>visits</span><span>{c.visits}</span></div>
+        <div className="tt-r"><span>loot picked up</span><span>{c.loot}</span></div>
+        <div className="tt-r"><span>reward</span><span>{c.reward.toFixed(3)} / visit</span></div>
+        <div className="tt-r"><span>risk</span><span>{c.risk.toFixed(3)} / visit</span></div>
+      </div>
+    );
+  }
   if (h.kind === 'diff') {
     const d = h.obj;
     return (
@@ -678,6 +789,16 @@ function Legend() {
         <div className="li" key={k}><Sw c={EVENT_COLORS[k]} /> {EVENT_LABEL[k]}</div>
       ))}
       {f.showExfil && <div className="li"><Sw c={EXFIL_COLOR} ring /> Inferred exfil</div>}
+      {f.showSpawns && (
+        <>
+          <div className="li"><Sw c={spawnRateColor(0.45)} /> Spawn ≥45% extract</div>
+          <div className="li"><Sw c={spawnRateColor(0.22)} /> Spawn ~22%</div>
+          <div className="li"><Sw c={spawnRateColor(0)} /> Spawn 0%</div>
+        </>
+      )}
+      {f.showEconomy && (['honeypot', 'freefarm', 'deathtrap', 'barren'] as const).map((q) => (
+        <div className="li" key={q}><Sw c={QUADRANT_COLOR[q]} sq /> {QUADRANT_LABEL[q]}</div>
+      ))}
       {f.colorByOutcome && (
         <>
           <div className="li"><Sw c={OUTCOME_COLOR.x} /> Extracted (inferred)</div>

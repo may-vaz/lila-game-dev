@@ -16,14 +16,19 @@ A browser tool that turns 5 days of raw LILA BLACK telemetry into something a **
 <td width="50%"><img src="docs/screenshot-exfil.png" alt="Inferred exfil zones"><br><sub><b>Exfil zones</b> — extraction points recovered from exit clustering, because the telemetry never logged them. See <code>INSIGHTS.md</code> §5.</sub></td>
 <td width="50%"><img src="docs/screenshot-scorecard.png" alt="Map health scorecard"><br><sub><b>Map health scorecard</b> — seven checks, severity-ranked, thresholds visible, exportable as Markdown.</sub></td>
 </tr>
+<tr>
+<td width="50%"><img src="docs/screenshot-spawns.png" alt="Spawn to outcome funnel"><br><sub><b>Spawn → outcome</b> — Lockdown's fixed spawns, coloured by extraction rate. The red 6 % spawn against the lime 40 % is a 6.4× fairness gap. See <code>INSIGHTS.md</code> §6.</sub></td>
+<td width="50%"><img src="docs/screenshot-economy.png" alt="Loot economy quadrants"><br><sub><b>Loot economy</b> — reward per visit against risk per visit. Amber honeypots in the town core, red deathtraps, slate barren ground.</sub></td>
+</tr>
 </table>
 
 ---
 
 ## What it does
 
-Six features. Four of them are the reason this is worth your time; two are the
-foundation they stand on.
+Eight features. Four are the reason this is worth your time, two more extend the
+same thinking into the two ends of a run that nothing else measures, and two are
+the foundation they all stand on.
 
 ### The four
 
@@ -33,6 +38,16 @@ foundation they stand on.
 | 2 | **Rotation & Flow Field** | *Which way do players move, and is it a route or a wander?* | A heatmap says *where*. This says *which way*, per cell, coloured by **coherence** = `\|Σv\| / Σ\|v\|` — amber is a one-way corridor, blue is milling. Rotations are a first-class table in real battle-royale warehouses, not an afterthought. `ARCHITECTURE.md` §3b |
 | 3 | **Phase Compare (A/B)** | *Did the distribution of players actually move?* | Divergent diff of any two slices — late vs early game, bots vs humans, deaths vs traffic. Both sides are normalised to a share of their own total **before** subtracting, so it measures redistribution rather than sample size. `ARCHITECTURE.md` §3b |
 | 4 | **Map Health Scorecard** | *What's wrong with this map, without me going to look?* | Seven checks per map, severity-ranked, thresholds visible and contestable, **every flag clickable straight to the layer that proves it**, exportable as Markdown for a ticket. The only declarative view in the tool. `ARCHITECTURE.md` §3d |
+
+### The two that complete the run
+
+These bookend the four above. Exfil Intelligence found where runs *end*; these
+ask what happens at the *start*, and what the map pays you in between.
+
+| | Feature | What it answers | Why it exists |
+|---|---|---|---|
+| 5 | **Spawn → Outcome Funnel** | *Does the spawn you're handed decide how your run ends?* | Clustering the **first** position of every human journey the way Exfil clusters the last one shows entries landing in only **9–19 cells per map, at 30–57× the rate traffic predicts** — LILA BLACK uses **fixed spawn points**, not a battle-royale free drop. That makes spawn a controlled variable, so it can be crossed against the inferred outcome. The result is a fairness number: Ambrose is balanced (**1.37×** spread between best and worst spawn), **Lockdown is not — 6.4×**, with its worst spawn extracting **6 %** on a 2:34 median run against **40 %** and 7:07 for its best. Zones under 10 runs are drawn hollow and refused a ranking. `ARCHITECTURE.md` §3f |
+| 6 | **Loot Economy** | *Per unit of footfall, what does a cell pay, and what does it cost?* | Loot is **78.9 %** of all recorded events and the biggest lever a Level Designer actually controls, but a loot heatmap mostly restates where players walk (**r = 0.80** against traffic on Ambrose). This is the ratio instead — reward `loot/visit` against risk `(kills+deaths)/visit`, each split at the map median — giving the four-way **honeypot / free-farm / deathtrap / barren** classification loot-balance teams work from. It surfaces **262 loot deserts** on Ambrose: cells with 20+ visits that pay nothing at all. `ARCHITECTURE.md` §3g |
 
 ### The two it stands on
 
@@ -58,6 +73,8 @@ practitioners actually work:
 | Phase compare | `fact_match_phase` (match × zone phase) is standard grain; a midcore studio writing in *PocketGamer.biz* shows the same thing as "movements on the map, different colours for different stages of the level". |
 | Map health scorecard | Balance marts — "weapons · drops · zones" — are how balance teams consume telemetry rather than reading raw graphs. |
 | Dead zones | The same *PocketGamer.biz* team used heatmaps specifically to find dead ends and under-used routes, then moved spawn points to redirect traffic. |
+| Spawn → outcome funnel | PUBG warehouses publish a **"zone luck"** table — drop position cross-tabbed against average finish, survival time and distance travelled. Same question, same shape, asked of fixed spawns instead of a drop plane. |
+| Loot economy | Studios running this genre treat loot-spawn rates as a continuous post-launch balance job, tuned from per-event telemetry alongside weapon damage and zone timing — reward-per-visit against risk-per-visit is the grain that job runs on. |
 
 ---
 
@@ -160,6 +177,7 @@ Vercel: point it at the repo, set **Root Directory** to `web`. Framework preset 
 | `←` `→` | Step 1 second · `Shift` for 10 |
 | `1` `2` `3` `4` | Toggle journeys / events / heatmap / dead zones |
 | `5` `6` `7` | Toggle flow field / compare A-B / exfil zones |
+| `8` `9` | Toggle spawn points / loot economy |
 | `M` | Map health scorecard |
 | `O` | Colour journeys by inferred outcome |
 | `H` / `B` | Toggle humans / bots |

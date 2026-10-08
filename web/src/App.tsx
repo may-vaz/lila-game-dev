@@ -26,6 +26,8 @@ function readUrl() {
   if (q.get('noevents') === '1') f.showEvents = false;
   if (q.get('exfil') === '1') f.showExfil = true;
   if (q.get('outcome') === '1') f.colorByOutcome = true;
+  if (q.get('spawn') === '1') f.showSpawns = true;
+  if (q.get('econ') === '1') { f.showEconomy = true; f.showHeat = false; }
   if (q.get('nobots') === '1') f.showBots = false;
   if (q.get('nohumans') === '1') f.showHumans = false;
   if (q.get('flow')) { f.showFlow = true; f.flowMin = +q.get('flow')!; }
@@ -50,6 +52,8 @@ function writeUrl() {
   if (!f.showEvents) q.set('noevents', '1');
   if (f.showExfil) q.set('exfil', '1');
   if (f.colorByOutcome) q.set('outcome', '1');
+  if (f.showSpawns) q.set('spawn', '1');
+  if (f.showEconomy) q.set('econ', '1');
   if (!f.showBots) q.set('nobots', '1');
   if (!f.showHumans) q.set('nohumans', '1');
   if (f.showFlow) q.set('flow', f.flowMin.toFixed(2));
@@ -122,6 +126,8 @@ export default function App() {
         case '5': s.patch({ showFlow: !f.showFlow }); break;
         case '6': s.patch({ showDiff: !f.showDiff }); break;
         case '7': s.patch({ showExfil: !f.showExfil }); break;
+        case '8': s.patch({ showSpawns: !f.showSpawns }); break;
+        case '9': s.patch({ showEconomy: !f.showEconomy }); break;
         case 'h': case 'H': s.patch({ showHumans: !f.showHumans }); break;
         case 'b': case 'B': s.patch({ showBots: !f.showBots }); break;
         case 'r': case 'R': s.setMode(s.mode === 'replay' ? 'aggregate' : 'replay'); break;
@@ -221,6 +227,8 @@ export default function App() {
               ['1 / 2 / 3 / 4', 'Toggle journeys / events / heatmap / dead zones'],
               ['5 / 6 / 7', 'Toggle flow field / compare A-B / exfil zones'],
               ['M', 'Map health scorecard'],
+              ['8', 'Spawn points / run funnel'],
+              ['9', 'Loot economy quadrants'],
               ['O', 'Colour journeys by inferred outcome'],
               ['H / B', 'Toggle humans / bots'],
               ['R', 'Switch Aggregate ⇄ Replay'],

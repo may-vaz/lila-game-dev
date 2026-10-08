@@ -115,6 +115,28 @@ export interface Exfil {
   rate: number;
 }
 
+export interface SpawnZone {
+  u: number;
+  v: number;
+  /** human journeys that began in this zone */
+  runs: number;
+  extracted: number;
+  died: number;
+  /** extracted / runs */
+  rate: number;
+  median_run: number;
+}
+
+export interface Spawns {
+  grid: number;
+  zones: SpawnZone[];
+  /** zones with enough runs to rank honestly */
+  ranked: number;
+  min_runs: number;
+  /** best ranked extraction rate / worst ranked. 1.0 = perfectly fair */
+  spread: number;
+}
+
 export interface ScorecardRow {
   key: string;
   label: string;
@@ -146,6 +168,7 @@ export interface Bundle {
   grids: Record<string, Grid>;
   flow: Record<string, Flow>;
   exfil: Record<string, Exfil>;
+  spawns: Record<string, Spawns>;
   scorecard: Record<string, Scorecard>;
   stats: {
     rows: number;

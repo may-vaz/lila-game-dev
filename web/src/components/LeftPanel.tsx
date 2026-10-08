@@ -1,7 +1,9 @@
 import { useStore } from '../store';
 import type { HeatMetric } from '../store';
 import { useFiltered } from '../lib/useFiltered';
-import { fmtTime, fmtNum, shortId, METRIC_LABEL, EVENT_COLORS, rgbCss } from '../lib/viz';
+import { fmtTime, fmtNum, shortId, METRIC_LABEL, EVENT_COLORS, rgbCss,
+  spawnRateColor, buildEconomy, QUADRANT_COLOR, QUADRANT_LABEL } from '../lib/viz';
+import { useMemo } from 'react';
 
 function Metric({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
   return (
@@ -60,6 +62,11 @@ export default function LeftPanel() {
   const { matches, match, events, journeys } = useFiltered();
   const setScorecard = useStore((s) => s.setScorecard);
   const exfil = bundle.exfil?.[f.mapId];
+  const spawns = bundle.spawns?.[f.mapId];
+  const econ = useMemo(() => {
+    const g = bundle.grids[f.mapId];
+    return g ? buildEconomy(g) : null;
+  }, [bundle, f.mapId]);
   const card = bundle.scorecard?.[f.mapId];
 
   const counts = events.reduce<Record<string, number>>((a, e) => {
@@ -183,6 +190,12 @@ export default function LeftPanel() {
         <Row on={f.showExfil} onClick={() => patch({ showExfil: !f.showExfil })} count={exfil?.zones.length} k="7">
           Exfil zones <sup className="inf">inferred</sup>
         </Row>
+        <Row on={f.showSpawns} onClick={() => patch({ showSpawns: !f.showSpawns })} count={spawns?.zones.length} k="8">
+          Spawn points
+        </Row>
+        <Row on={f.showEconomy} onClick={() => patch({ showEconomy: !f.showEconomy })} k="9">
+          Loot economy
+        </Row>
         <Row on={f.colorByOutcome} onClick={() => patch({ colorByOutcome: !f.colorByOutcome })} k="O">
           Colour by outcome
         </Row>
@@ -218,6 +231,82 @@ export default function LeftPanel() {
               <span className="ct">{z.exits}</span>
             </div>
           ))}
+        </div>
+      )}
+
+      {f.showSpawns && spawns && (
+        <div className="sect">
+          <h3>Spawn → outcome</h3>
+          <div className="note" style={{ marginBottom: 9 }}>
+            Entries land in only {spawns.zones.length} places at up to 57× the rate
+            traffic predicts, so these are <b>fixed spawn points</b>, not a free drop.
+            That makes spawn a controlled variable: crossed against the inferred
+            outcome, it answers whether the spawn you are handed decides your run.
+          </div>
+          <div className="metric-grid" style={{ marginBottom: 9 }}>
+            <Metric
+              label="Fairness spread"
+              value={`${spawns.spread}×`}
+              accent={spawns.spread >= 2}
+            />
+            <Metric label="Ranked spawns" value={`${spawns.ranked} of ${spawns.zones.length}`} />
+          </div>
+          {spawns.zones
+            .filter((z) => z.runs >= spawns.min_runs)
+            .slice()
+            .sort((a, b) => b.rate - a.rate)
+            .map((z, i) => (
+              <div className="fun" key={i}>
+                <span className="bar">
+                  <i style={{ width: `${Math.min(100, (z.rate / 0.45) * 100)}%`,
+                              background: rgbCss(spawnRateColor(z.rate)) }} />
+                </span>
+                <span className="v">{(z.rate * 100).toFixed(0)}%</span>
+                <span className="n">{z.runs} runs</span>
+              </div>
+            ))}
+          <div className="note" style={{ marginTop: 8 }}>
+            {spawns.spread >= 2
+              ? `Worst spawn extracts ${spawns.spread}× less often than the best — a balance defect, not variance.`
+              : 'Spawns are within noise of each other here. This map is balanced.'}
+            {' '}Zones under {spawns.min_runs} runs are drawn hollow and left unranked.
+          </div>
+        </div>
+      )}
+
+      {f.showEconomy && econ && (
+        <div className="sect">
+          <h3>Loot economy</h3>
+          <div className="note" style={{ marginBottom: 9 }}>
+            Loot is <b>78.9%</b> of all events, but a loot heatmap mostly restates
+            where players walk. This is the ratio instead: per visit, what a cell{' '}
+            <b>pays</b> (loot) against what it <b>costs</b> (kills + deaths), each
+            split at the map median over cells with ≥{econ.minVisits} visits.
+          </div>
+          <div className="quad">
+            {(['honeypot', 'freefarm', 'deathtrap', 'barren'] as const).map((q) => (
+              <div className="q" key={q}>
+                <span className="qn">
+                  <span className="dot" style={{ background: rgbCss(QUADRANT_COLOR[q]) }} />
+                  {QUADRANT_LABEL[q].split(' — ')[0]}
+                </span>
+                <span className="qv">{econ.counts[q]}</span>
+              </div>
+            ))}
+          </div>
+          <div className="row static">
+            <span className="nm">Loot deserts (≥{econ.minVisits} visits, 0 loot)</span>
+            <span className="ct">{econ.deserts}</span>
+          </div>
+          <div className="row static">
+            <span className="nm">corr(loot, traffic)</span>
+            <span className="ct">{econ.corr.toFixed(2)}</span>
+          </div>
+          <div className="note" style={{ marginTop: 8 }}>
+            {econ.corr > 0.7
+              ? 'Loot tracks footfall almost exactly — it is following players rather than steering them. Moving loot is the cheapest way to redirect traffic.'
+              : 'Loot and footfall are only loosely coupled here, so loot is not what is pulling players through this map.'}
+          </div>
         </div>
       )}
 

@@ -191,6 +191,86 @@ The legend is generated from the same constants the deck.gl layers render with (
 
 ---
 
+## 3f. Spawn points, and whether they are fair
+
+Running the exfil clustering backwards — on the **first** position of every human
+journey rather than the last — returned something I did not expect. Entries do
+not spread across the map the way a battle-royale drop would. They land in
+**9–19 cells per map, at 30–57× the rate traffic predicts**. LILA BLACK uses a
+small set of **fixed spawn points**.
+
+That reframes the analysis. A free drop makes spawn a player choice and therefore
+a confounder; a fixed spawn makes it an assigned, controlled variable — which
+means it can be cross-tabbed against the run outcome recovered in §3c to answer a
+question a Level Designer can act on: *does the spawn you are handed change your
+odds of getting out?*
+
+| Map | Spawn points | Ranked | Best | Worst | Spread |
+|---|---|---|---|---|---|
+| Ambrose Valley | 7 | 7 | 37 % | 27 % | **1.37×** |
+| Grand Rift | 5 | 3 | 20 % | 15 % | 1.30× |
+| Lockdown | 9 | 8 | 40 % | 6 % | **6.40×** |
+
+Ambrose is the control. Seven spawns, all landing between 27 % and 37 % — that is
+within what 70–86 runs per spawn can resolve, and it demonstrates the design *can*
+be balanced. Lockdown is the finding: a 6.4× spread, with the worst spawn
+extracting **6 %** on a median run of **2:34** against the best at **40 %** and
+**7:07**. Players assigned that spawn are losing the run in under half the time,
+before loot or routing can matter.
+
+The honest hazard here is small-n: an 8-run spawn showing 0 % is noise, not a
+defect. So `MIN_SPAWN_RUNS = 10` gates the ranking, the spread is computed only
+over ranked zones, every marker carries its run count in the tooltip, and
+sub-threshold zones render hollow and unlabelled rather than being silently
+dropped — a designer should be able to see that a spawn exists but is not yet
+measurable.
+
+Marker shape is load-bearing: spawns are **filled squares** where exfil zones are
+**hollow rings**, because spawns are observed ground truth and exfil zones are an
+inference. Fill colour maps extraction rate on a **fixed** 0–45 % scale rather
+than a per-map relative one, so the best spawn on a broken map cannot be coloured
+as if it were healthy.
+
+---
+
+## 3g. The loot economy
+
+Loot is **78.9 %** of every event in this dataset, and loot placement is the
+cheapest, highest-leverage change a Level Designer can ship. But the loot heatmap
+is close to useless on its own: its correlation with raw traffic is **r = 0.80**
+on Ambrose. It is largely a restatement of where players walk.
+
+The designer question is a ratio, not a count — per unit of footfall, what does a
+cell **pay**, and what does it **cost**?
+
+```
+reward = loot pickups        / visits
+risk   = (kills + deaths)    / visits
+```
+
+Both are split at the map median across cells with ≥ 20 visits, giving four
+classes:
+
+| Class | Reward | Risk | Reading |
+|---|---|---|---|
+| **Honeypot** | high | high | The intended tension. Worth the fight. |
+| **Free farm** | high | low | Pays out for nothing. Over-generous. |
+| **Deathtrap** | low | high | Punishes with no compensation. |
+| **Barren** | low | low | Dead space. |
+
+Two design notes. First, **risk folds in kills, not just deaths** — deaths are
+sparse enough that the per-cell median is exactly 0, which would collapse the
+split into a meaningless binary. Second, the whole layer is **derived on the
+client** from the heat grids already in `bundle.json`; it costs zero extra
+payload and cannot drift out of sync with the grid definition.
+
+On Ambrose this surfaces **262 loot deserts** — cells taking 20+ visits that
+yield no loot whatsoever — sitting next to a dense honeypot core in the town
+centre. That is a concrete, mappable list of places to move loot to, and the
+r = 0.80 says moving it will move players.
+
+---
+
 ## 4. Assumptions, and the data problems behind them
 
 ### 4.1 The timestamp is wall-clock, not match-relative — and the unit is wrong
@@ -234,6 +314,10 @@ The four analytical layers were chosen to match how battle-royale telemetry is a
 - **Rotations** — `mart_player_rotation` at player × match grain is a first-class table in production battle-royale warehouses, which is why direction and coherence get their own layer rather than being folded into the heatmap.
 - **Phase grain** — `fact_match_phase` (match × phase) is standard. Phase here is *relative* to each match's own duration because length varies 3–4×.
 - **Balance marts** — balance teams consume flagged summaries, not raw graphs. A midcore studio writing up their heatmap tooling made the same point explicitly: interpreting heatmaps needs product expertise, so the tool should do the interpreting.
+- **Drop / spawn luck** — PUBG warehouses publish a "zone luck" mart cross-tabbing drop position against finish and survival. §3f asks the same question of fixed spawns, where the position is *assigned* rather than chosen and the causal reading is therefore cleaner.
+- **Loot balance** — loot-spawn rates are tuned continuously post-launch from per-event telemetry, alongside weapon damage and zone timing. §3g builds the reward-per-visit vs risk-per-visit grain that work runs on, because loot is 78.9 % of this dataset and a flat loot heatmap mostly restates footfall.
+
+Two features here (§3f, §3g) are not in the brief's requirement list. They are included because the brief asks for product thinking, and both answer questions the required layers raise but cannot close: the required heatmaps show *where* loot is taken but not whether it is worth taking, and §3c found where runs end without ever asking whether where they *began* predicted it.
 
 **What was deliberately rejected:** chokepoint / encounter-density detection, which is textbook for this genre. With 93.3 % of matches containing exactly one human it would have rendered an empty layer. A feature that is correct in principle and empty in practice is worse than no feature.
 

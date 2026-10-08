@@ -259,3 +259,138 @@ export const STATUS_COLOR: Record<string, string> = {
 
 /** CSS rgb() string from one of the palette triples above. */
 export const rgbCss = (c: [number, number, number]) => `rgb(${c[0]},${c[1]},${c[2]})`;
+
+// ---------------------------------------------------------------------------
+// Spawn points
+// ---------------------------------------------------------------------------
+
+type RGB = [number, number, number];
+
+const mix = (a: RGB, b: RGB, t: number): RGB =>
+  [0, 1, 2].map((i) => Math.round(a[i] + (b[i] - a[i]) * t)) as RGB;
+
+/** Spawn markers are squares, not circles, so they never read as exfil rings. */
+export const SPAWN_COLOR: RGB = [255, 159, 46];
+
+/**
+ * Extraction rate -> colour, on a fixed scale rather than a relative one.
+ * A relative scale would make the best spawn on a badly balanced map look
+ * healthy; anchoring to the ~30% game-wide rate keeps maps comparable.
+ */
+export function spawnRateColor(rate: number): RGB {
+  const t = Math.max(0, Math.min(1, rate / 0.45));
+  return t < 0.5
+    ? mix([240, 56, 74], [255, 176, 46], t * 2)
+    : mix([255, 176, 46], [142, 224, 60], (t - 0.5) * 2);
+}
+
+// ---------------------------------------------------------------------------
+// Loot economy
+// ---------------------------------------------------------------------------
+//
+// Loot is 78.9% of all recorded events - by far the biggest lever a level
+// designer actually controls - but a flat loot heatmap only answers "where is
+// loot picked up", which is mostly a restatement of "where do players walk"
+// (r = 0.80 on Ambrose). The designer question is the ratio one: per unit of
+// foot traffic, what does a cell PAY, and what does it COST?
+//
+//   reward = loot pickups / visits
+//   risk   = (kills + deaths) / visits
+//
+// Splitting both at the map median gives the four-way classification that
+// loot-balance teams use. Deaths alone are too sparse to split on (median 0),
+// which is why risk folds in kills.
+
+export type Quadrant = 'honeypot' | 'freefarm' | 'deathtrap' | 'barren';
+
+export const QUADRANT_COLOR: Record<Quadrant, RGB> = {
+  honeypot: [255, 176, 46],   // pays well, hurts     -> the intended tension
+  freefarm: [142, 224, 60],   // pays well, safe      -> too generous
+  deathtrap: [240, 56, 74],   // pays nothing, hurts  -> punishes for free
+  barren: [90, 122, 133],     // pays nothing, safe   -> dead space
+};
+
+export const QUADRANT_LABEL: Record<Quadrant, string> = {
+  honeypot: 'Honeypot — high reward, high risk',
+  freefarm: 'Free farm — high reward, low risk',
+  deathtrap: 'Deathtrap — low reward, high risk',
+  barren: 'Barren — low reward, low risk',
+};
+
+export interface EconCell {
+  i: number;
+  reward: number;
+  risk: number;
+  visits: number;
+  loot: number;
+  q: Quadrant;
+}
+
+export interface Economy {
+  cells: EconCell[];
+  medReward: number;
+  medRisk: number;
+  counts: Record<Quadrant, number>;
+  /** cells with real footfall that yield no loot at all */
+  deserts: number;
+  /** Pearson r between loot volume and traffic. High = loot merely follows players. */
+  corr: number;
+  minVisits: number;
+}
+
+const ECON_MIN_VISITS = 20;
+
+function median(a: number[]): number {
+  if (!a.length) return 0;
+  const s = [...a].sort((x, y) => x - y);
+  const m = s.length >> 1;
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+}
+
+export function buildEconomy(grid: {
+  n: number; playable: number[]; traffic: number[];
+  loot: number[]; kills: number[]; deaths: number[];
+}): Economy | null {
+  const { traffic, loot, kills, deaths, playable } = grid;
+  const idx: number[] = [];
+  for (let i = 0; i < traffic.length; i++) {
+    if (playable[i] && traffic[i] >= ECON_MIN_VISITS) idx.push(i);
+  }
+  if (idx.length < 24) return null;
+
+  const reward = idx.map((i) => loot[i] / traffic[i]);
+  const risk = idx.map((i) => (kills[i] + deaths[i]) / traffic[i]);
+  const medReward = median(reward);
+  const medRisk = median(risk);
+
+  const counts: Record<Quadrant, number> = { honeypot: 0, freefarm: 0, deathtrap: 0, barren: 0 };
+  const cells: EconCell[] = idx.map((i, k) => {
+    const hiR = reward[k] > medReward;
+    const hiK = risk[k] > medRisk;
+    const q: Quadrant = hiR ? (hiK ? 'honeypot' : 'freefarm') : hiK ? 'deathtrap' : 'barren';
+    counts[q]++;
+    return { i, reward: reward[k], risk: risk[k], visits: traffic[i], loot: loot[i], q };
+  });
+
+  // Pearson r(loot, traffic) over the same cells.
+  const xs = idx.map((i) => loot[i]);
+  const ys = idx.map((i) => traffic[i]);
+  const mx = xs.reduce((a, b) => a + b, 0) / xs.length;
+  const my = ys.reduce((a, b) => a + b, 0) / ys.length;
+  let num = 0, dx = 0, dy = 0;
+  for (let k = 0; k < xs.length; k++) {
+    const a = xs[k] - mx, b = ys[k] - my;
+    num += a * b; dx += a * a; dy += b * b;
+  }
+  const corr = dx && dy ? num / Math.sqrt(dx * dy) : 0;
+
+  return {
+    cells,
+    medReward,
+    medRisk,
+    counts,
+    deserts: cells.filter((c) => c.loot === 0).length,
+    corr,
+    minVisits: ECON_MIN_VISITS,
+  };
+}
