@@ -142,19 +142,33 @@ export default function LeftPanel() {
                   </option>
                 ))}
             </select>
+            {matches.length === 0 && (
+              <div className="warnline">
+                No match passes the current filters.
+                {f.minHumans > 0 && <> Only <b>1 of 796</b> matches in the whole dataset has 2+ humans.</>}
+                {' '}<button className="lnk" onClick={() => patch({ minHumans: 0, date: 'all' })}>reset filters</button>
+              </div>
+            )}
           </div>
         )}
 
-        {mode === 'aggregate' && (
-          <div className="field">
-            <label>Min. human players per match · {f.minHumans}</label>
-            <input
-              type="range" min={0} max={2} step={1} value={f.minHumans}
-              onChange={(e) => patch({ minHumans: +e.target.value })}
-              style={{ width: '100%', accentColor: 'var(--accent)' }}
-            />
-          </div>
-        )}
+        {/* Scope filter, shown in BOTH modes. It used to be aggregate-only,
+            which meant it could silently empty the match list in Replay with
+            no visible cause and no way to undo it. */}
+        <div className="field">
+          <label>Min. human players per match · {f.minHumans}</label>
+          <input
+            type="range" min={0} max={2} step={1} value={f.minHumans}
+            onChange={(e) => patch({ minHumans: +e.target.value })}
+            style={{ width: '100%', accentColor: 'var(--accent)' }}
+          />
+          {f.minHumans > 0 && (
+            <div className="warnline">
+              Only {f.minHumans}+ human matches are in scope.
+              {' '}<button className="lnk" onClick={() => patch({ minHumans: 0 })}>show all</button>
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="sect">

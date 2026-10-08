@@ -66,7 +66,7 @@ export default function Timeline() {
     return (
       <div className="timeline">
         <div style={{ textAlign: 'center', color: 'var(--text-3)', fontSize: 11.5, padding: '8px 0' }}>
-          No match in scope — widen the date filter or switch map.
+          No match in scope — clear the date or <b>min. human players</b> filter in the left panel, or switch map.
         </div>
       </div>
     );

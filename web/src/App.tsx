@@ -26,6 +26,8 @@ function readUrl() {
   if (q.get('noevents') === '1') f.showEvents = false;
   if (q.get('exfil') === '1') f.showExfil = true;
   if (q.get('outcome') === '1') f.colorByOutcome = true;
+  const mh = Number(q.get('minhumans'));
+  if (Number.isFinite(mh) && mh > 0) f.minHumans = Math.min(2, Math.round(mh));
   if (q.get('spawn') === '1') f.showSpawns = true;
   if (q.get('econ') === '1') { f.showEconomy = true; f.showHeat = false; }
   if (q.get('nobots') === '1') f.showBots = false;
@@ -52,6 +54,7 @@ function writeUrl() {
   if (!f.showEvents) q.set('noevents', '1');
   if (f.showExfil) q.set('exfil', '1');
   if (f.colorByOutcome) q.set('outcome', '1');
+  if (f.minHumans > 0) q.set('minhumans', String(f.minHumans));
   if (f.showSpawns) q.set('spawn', '1');
   if (f.showEconomy) q.set('econ', '1');
   if (!f.showBots) q.set('nobots', '1');
