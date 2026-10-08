@@ -12,6 +12,10 @@ A browser tool that turns 5 days of raw LILA BLACK telemetry into something a **
 <td width="50%"><img src="docs/screenshot-flowfield.png" alt="Flow field"><br><sub><b>Flow field</b> — mean direction of travel per cell, coloured by coherence. Amber is a one-way route, blue is players milling.</sub></td>
 <td width="50%"><img src="docs/screenshot-compare.png" alt="Compare A/B"><br><sub><b>Compare A/B</b> — late game vs early game. Red core, blue ring: players converge on the centre. See <code>INSIGHTS.md</code> §4.</sub></td>
 </tr>
+<tr>
+<td width="50%"><img src="docs/screenshot-exfil.png" alt="Inferred exfil zones"><br><sub><b>Exfil zones</b> — extraction points recovered from exit clustering, because the telemetry never logged them. See <code>INSIGHTS.md</code> §5.</sub></td>
+<td width="50%"><img src="docs/screenshot-scorecard.png" alt="Map health scorecard"><br><sub><b>Map health scorecard</b> — seven checks, severity-ranked, thresholds visible, exportable as Markdown.</sub></td>
+</tr>
 </table>
 
 ---
@@ -29,6 +33,8 @@ A browser tool that turns 5 days of raw LILA BLACK telemetry into something a **
 | **Heatmaps** | Traffic (all / humans only), kill zones, death zones, loot density, storm deaths. |
 | **Flow field** | Movement **direction**, not just density. Each cell shows the mean heading of players crossing it, coloured by **coherence** (`\|Σv\| / Σ\|v\|`) — amber = a one-way corridor everyone traverses the same way, blue = a pocket where players mill about. A heatmap says *where*; this says *which way*, which is what "map flow" actually means. |
 | **Compare A/B** | A divergent diff of any two slices of the map — late vs early game, bots vs humans, deaths vs traffic. Both sides are normalised to a share of their own total before subtracting, so it shows players **redistributing** rather than one slice simply having more rows. Red = busier in A, blue = busier in B. This is the "did the change work?" view, applied to level design. |
+| **Exfil zones** <sup>inferred</sup> | The dataset has **no extraction event**. These are recovered statistically — locations where 13–47× more runs end than traffic predicts. Validated against an independent signal: players ending inside one die **0.6 %** of the time, everyone else dies **82.8 %** of the time. Gives LILA an **extraction rate** (~27 %) that was previously unmeasurable. See `ARCHITECTURE.md` §3c. |
+| **Map health scorecard** | Seven checks per map — utilisation, route coherence, traffic concentration, extraction rate, storm engagement, PvP share, shared matches — each flagged ok/warn/critical with visible thresholds, ranked by severity, and exportable as Markdown for a ticket. The tool volunteers problems instead of waiting to be interrogated. |
 | **Dead zones** | The inverse heatmap — grid cells players effectively never enter. The brief asked "which areas of the map get ignored"; this answers it directly. |
 | **Region tool** | `Shift`+drag any area to get its kill/death/loot counts and traffic share. "Is this building pulling its weight?" |
 | **Shareable views** | Every filter, layer, match and timestamp lives in the URL. **Copy view link** puts the exact screen in a colleague's hands. |
@@ -129,7 +135,9 @@ Vercel: point it at the repo, set **Root Directory** to `web`. Framework preset 
 | `Space` | Play / pause (Replay mode) |
 | `←` `→` | Step 1 second · `Shift` for 10 |
 | `1` `2` `3` `4` | Toggle journeys / events / heatmap / dead zones |
-| `5` `6` | Toggle flow field / compare A-B |
+| `5` `6` `7` | Toggle flow field / compare A-B / exfil zones |
+| `M` | Map health scorecard |
+| `O` | Colour journeys by inferred outcome |
 | `H` / `B` | Toggle humans / bots |
 | `R` | Switch Aggregate ⇄ Replay |
 | `Shift` + drag | Measure a region |

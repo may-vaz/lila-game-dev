@@ -134,6 +134,37 @@ Cells below 6 % of the maximum absolute difference are suppressed as rounding fu
 
 ---
 
+## 3c. Recovering the extraction event
+
+The dataset has no `Extracted` event, which for an extraction shooter means the defining outcome of a run is unrecorded. `pipeline/build.py::build_exfil` reconstructs it.
+
+**Method.** Bin the final recorded position of every human journey onto a 48×48 grid. Compare observed exits per cell against the exits that cell's share of total traffic would predict. Flag a cell when it has ≥ 4 exits *and* ≥ 6× the expected count, merge 8-connected flagged cells into zones (a door-sized trigger straddling a boundary should not read as two exits), and attach a Poisson tail probability `P(X ≥ k | λ = expected)` to each.
+
+**Why it is not circular.** The clustering only ever looks at *where* runs end. The validation uses a signal it never saw — whether the player also has a `Killed`/`KilledByStorm` event:
+
+| | Died, ended inside a zone | Died, ended elsewhere |
+|---|---|---|
+| Ambrose Valley | 0.6 % | 82.8 % |
+| Grand Rift | 6.7 % | 69.0 % |
+| Lockdown | 8.3 % | 75.6 % |
+
+Dying and extracting are the two ways to leave. Locations where almost nobody dies but a quarter of all runs terminate are extraction points.
+
+**What is deliberately not claimed.** No individual player is labelled "extracted" with certainty — the inference is population-level, and ~12 % of runs land in an `unresolved` bucket (neither a death nor a known zone: disconnects, backgrounded apps, exfil points below the detection bar). Everything derived from this is labelled `inferred` in the UI, and the residual is reported rather than hidden. The recommendation to log the event properly stands: reconstruction recovers the zones and a rate, but not loot value carried out.
+
+---
+
+## 3d. The map health scorecard
+
+Every other layer is interrogative — you must already suspect something to go find it. The scorecard is declarative: it opens with the problems found and ranked across seven dimensions (area utilisation, route coherence, traffic concentration, extraction rate, storm engagement, PvP share, shared matches), each flagged ok/warn/critical and exportable as Markdown for a ticket.
+
+Two deliberate design decisions:
+
+- **No composite score.** Averaging area utilisation against PvP share produces a number with no units, and it lets a map hide one catastrophic metric behind six healthy ones. Each dimension stands alone.
+- **Thresholds are declared, not implied.** They live in one named constant, `SCORECARD_RULES` in `pipeline/build.py`, and the UI shows the warn/critical cut-offs next to every value. There is no public benchmark for "correct" area utilisation in a mobile extraction shooter; these are design judgements, and the tool says so, so a designer can argue with the threshold instead of with the tool.
+
+---
+
 ## 4. Assumptions, and the data problems behind them
 
 ### 4.1 The timestamp is wall-clock, not match-relative — and the unit is wrong
@@ -183,6 +214,9 @@ Exact-`(0,0)` coordinates are treated as spawn/null placeholders rather than a r
 | Flow grid at 28×28, heat grid at 64×64 | One shared resolution | Arrows need breathing room and a decent per-cell sample count; density maps want fine detail. Forcing one resolution makes both worse. | Two grid systems to keep straight; the compare layer uses the 64× grid, the flow layer the 28×. |
 | Normalise before diffing in Compare A/B | Subtract raw counts | Raw counts just restate which slice has more rows. Shares answer whether players *redistributed*. | Absolute volume is lost; the right panel carries it instead. |
 | Drop position transitions with `dt ≥ 30 s` | Interpolate across the gap | An invented straight line through a telemetry hole is a route no player took, and it would be indistinguishable from a real one. | Slightly fewer samples in the flow field. |
+| Reconstruct extraction from exit clustering | Ship without the metric; or infer per-player from "positions stopped" | The population-level signal is overwhelming (24× excess, 0.6 % vs 82.8 % death rate) and it unlocks the genre's headline metric. Per-player inference would have been a fabricated number. | A ~12 % unresolved residual, and no loot-value-carried-out. Everything is labelled `inferred`. |
+| Scorecard thresholds as named constants | Hard-code them in the UI; or omit flags entirely | A flag is only useful if you can see and contest the line that produced it. One constant, documented, surfaced in the tooltip. | They are judgements, not benchmarks, and the doc has to keep saying so. |
+| No composite "map score" | One headline number per map | Averaging unrelated dimensions hides a catastrophic metric behind healthy ones, and the units are meaningless. | No single-number ranking; the UI ranks by count of critical flags instead. |
 | `user_id` shape for bot detection | Trust event-name prefixes | It's an identity property and `BotPosition` corroborates it perfectly. | ~500 rows have contradictory event names; counted, not hidden. |
 
 ---

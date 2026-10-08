@@ -1,6 +1,6 @@
 # What I learned about LILA BLACK
 
-The brief asked for three. The fourth came out of the flow-field and compare layers after they were built, and it changes what to do about the second — so it is here too.
+The brief asked for three. Five are here: the fourth and fifth came out of layers built after the first pass, and both change what to do about the earlier ones. Insight 5 in particular retracts something I wrote in Insight 3.
 
 All figures are from the full dataset — **1,243 files, 89,104 rows, 796 matches, 245 humans, 94 bots, Feb 9–14 2026 (UTC)** — read through the tool in this repo. Every claim below is reproducible from a link in the tool itself.
 
@@ -124,9 +124,9 @@ Note the healthy signal too: traffic concentration is near-identical across all 
 
 The event vocabulary is `Position`, `BotPosition`, `Kill`, `Killed`, `BotKill`, `BotKilled`, `Loot`, `KilledByStorm`. For an **extraction** shooter, the defining outcome — *did the player get out with their loot?* — **is not recorded at all.**
 
-Without it, nobody can measure extraction rate by zone, compare successful versus failed exfil routes, or tell a player who left voluntarily from one who rage-quit. I deliberately did **not** infer extraction from "positions stopped", because that's indistinguishable from a disconnect and would have put a fabricated number in a designer's hands.
+I first wrote here that I had deliberately *not* inferred extraction from "positions stopped", because for a single player that's indistinguishable from a disconnect.
 
-Adding one `Extracted` event would unlock the most important map-design question in the genre: **which exits are viable, and which are traps.**
+That remains true per-player. It turned out not to be true in aggregate — see **Insight 5**, where the extraction points are recovered from the spatial statistics of where sessions end, and validated against an independent signal. The recommendation to **log an explicit `Extracted` event** still stands: reconstruction gets the zones and a population-level rate, but it cannot tell you *what the player was carrying when they left*, which is the half that drives economy and monetisation.
 
 **Metrics affected**
 
@@ -194,3 +194,68 @@ It separates a correlation from a cause, and the direction of the answer changes
 
 - `?mode=aggregate&map=AmbroseValley&cmp=traffic_late~traffic_early&nopaths=1&noevents=1` — the red core and blue ring.
 - `?mode=aggregate&map=AmbroseValley&flow=0.30&nopaths=1&noevents=1` — the flow field; note how few arrows survive the coherence filter.
+
+
+---
+
+## Insight 5 — The missing `Extracted` event is recoverable, and the extraction rate is ~27 %
+
+**What caught my eye**
+
+Insight 3 ends by arguing that the most valuable missing column is an extraction event, and that I would not fake one by assuming "positions stopped" means "got out". That is still the right call *for an individual player* — one session ending is indistinguishable from a disconnect.
+
+But 776 sessions ending are not. So I looked at **where** they end.
+
+**The evidence**
+
+Bin the last recorded position of every human journey onto a 48×48 grid and compare it to where players actually spend their time. If runs ended for boring reasons — death, disconnect, app backgrounded — exits would scatter roughly in proportion to traffic.
+
+They do not. On Ambrose Valley:
+
+| Zone | Runs ended here | Traffic predicts | Excess | Poisson p |
+|---|---|---|---|---|
+| 1 | 46 | 1.9 | **24.2×** | < 1e-16 |
+| 2 | 39 | 1.6 | **25.1×** | 1.1e-16 |
+| 3 | 35 | 1.4 | **24.7×** | < 1e-16 |
+| 4 | 28 | 2.0 | **13.6×** | < 1e-16 |
+| 5 | 27 | 1.8 | **15.3×** | 1.1e-16 |
+
+Five locations absorb **175 of 552 runs**. Something at those coordinates ends runs on purpose.
+
+Then the cross-check that makes this safe to ship rather than a guess — an *independent* signal the clustering never saw. Did those players also have a death event?
+
+| | Ended inside a zone | Ended anywhere else |
+|---|---|---|
+| Ambrose Valley | **0.6 %** died (1 of 175) | **82.8 %** died (312 of 377) |
+| Grand Rift | **6.7 %** died | **69.0 %** died |
+| Lockdown | **8.3 %** died | **75.6 %** died |
+
+A **138× difference** on Ambrose. There are two ways to leave an extraction shooter: die, or extract. These clusters are overwhelmingly the second one. They are the extraction points.
+
+The resulting rates are consistent across three independently-sampled maps — **31.5 % / 24.6 % / 26.4 %** — which is itself corroboration. An artefact of my clustering rule would have no reason to land in the same place three times.
+
+![Inferred exfil zones on Ambrose Valley](docs/screenshot-exfil.png)
+
+**One more thing falls out of it.** Median time-to-extraction is **578–624 s**. Median match duration is **382 s**. Players who extract play roughly **1.6× longer than the median run** — extraction is the long-session behaviour, which makes it the single most important thing in the game to instrument properly.
+
+And note where that number sits: the first storm death anywhere is at **655 s**. Successful extractors are leaving at ~590 s — **just before the storm exists**. The storm is not pressuring extraction either. It is not pressuring anything (Insight 2).
+
+**Is it actionable? Yes.**
+
+1. **Ship the `Extracted` event anyway.** Reconstruction recovers the zones and a rate; it cannot recover *loot value carried out*, which is what drives the economy, the risk/reward curve and monetisation. This analysis tells you the zones to attach it to, so the instrumentation ticket is now small and specific.
+2. **~27 % extraction is low, and the failure mode is uniform.** Roughly three of four runs end in death. With PvP at 0.13 % (Insight 1), players are overwhelmingly losing runs to bots and the environment. That is a difficulty-curve problem, not a competition problem.
+3. **Zone 5 on Ambrose is behaving differently** — median run 392 s against 578–624 s for the others. It is being used as an early bail-out rather than a completed run. Worth checking whether it is too easy to reach, or placed somewhere players stumble into before they have looted anything.
+4. **12 % of runs are "unresolved"** — neither a death nor a known zone. That is the honest residual: disconnects, backgrounded apps, or exfil points too rarely used to clear the detection bar. It is a ceiling on how far reconstruction can go and the clearest argument for instrumenting the event properly.
+
+**Metrics affected**
+
+**Extraction rate** (newly measurable at all) · run survival rate · time-to-extract · per-zone exfil load · session length · and once the event ships, loot-value-per-extraction — the headline retention and monetisation metric for the genre.
+
+**Why a level designer should care**
+
+Extraction points are the highest-stakes geometry in an extraction shooter: they decide where the endgame happens and which routes matter. Until now they were invisible in the data. Now there are five on Ambrose, three on Grand Rift and six on Lockdown, each with a usage count, a death rate and a median run time — so "is this exfil pulling its weight, and is it safe or lethal?" is a question with a number attached.
+
+**How to see it in the tool**
+
+- `?mode=aggregate&map=AmbroseValley&exfil=1&outcome=1&nopaths=1&noevents=1` — the zones, sized by usage.
+- Press `O` in any view to recolour journeys by inferred outcome; press `M` for the map health scorecard.
