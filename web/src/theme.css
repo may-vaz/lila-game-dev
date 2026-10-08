@@ -523,3 +523,11 @@ sup.inf {
 }
 .row.static { cursor: default; }
 .row.static:hover { background: none; }
+.sc-ev {
+  display: block; margin-top: 8px; padding: 5px 9px;
+  background: transparent; border: 1px solid var(--line-2);
+  border-radius: 6px; color: var(--text-2);
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: .03em;
+  cursor: pointer; transition: border-color .15s, color .15s;
+}
+.sc-ev:hover { border-color: var(--accent); color: var(--accent); }

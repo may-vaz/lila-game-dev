@@ -22,24 +22,42 @@ A browser tool that turns 5 days of raw LILA BLACK telemetry into something a **
 
 ## What it does
 
-| | Feature |
+Six features. Four of them are the reason this is worth your time; two are the
+foundation they stand on.
+
+### The four
+
+| | Feature | What it answers | Why it exists |
+|---|---|---|---|
+| 1 | **Exfil Intelligence** <sup>inferred</sup> | *Where do players actually get out?* | The telemetry has **no extraction event** — the defining outcome of an extraction shooter is unrecorded. These zones are recovered statistically: locations where 13–47× more runs end than traffic predicts, validated against an independent signal (players ending inside one die **0.6 %** of the time; everyone else dies **82.8 %**). Produces an **extraction rate** (~27 %) that was previously unmeasurable. `ARCHITECTURE.md` §3c |
+| 2 | **Rotation & Flow Field** | *Which way do players move, and is it a route or a wander?* | A heatmap says *where*. This says *which way*, per cell, coloured by **coherence** = `\|Σv\| / Σ\|v\|` — amber is a one-way corridor, blue is milling. Rotations are a first-class table in real battle-royale warehouses, not an afterthought. `ARCHITECTURE.md` §3b |
+| 3 | **Phase Compare (A/B)** | *Did the distribution of players actually move?* | Divergent diff of any two slices — late vs early game, bots vs humans, deaths vs traffic. Both sides are normalised to a share of their own total **before** subtracting, so it measures redistribution rather than sample size. `ARCHITECTURE.md` §3b |
+| 4 | **Map Health Scorecard** | *What's wrong with this map, without me going to look?* | Seven checks per map, severity-ranked, thresholds visible and contestable, **every flag clickable straight to the layer that proves it**, exportable as Markdown for a ticket. The only declarative view in the tool. `ARCHITECTURE.md` §3d |
+
+### The two it stands on
+
+| | Feature | Contains |
+|---|---|---|
+| 5 | **Journey Explorer** | The aggregate workspace: every path on the correct minimap, humans (lime) vs bots (slate), kill/death/loot/storm markers, filtering by map / date / match / player count, six heatmap metrics, **dead-zone detection**, and a `Shift`+drag **region tool** that returns kill/death/loot counts and traffic share for any area. |
+| 6 | **Match Replay** | One match animated over its own timeline — play/pause, 1×–16×, scrub, frame-step, with an **event-density histogram baked into the scrubber** so you can see where the action is and click to it. |
+
+Throughout: every filter, layer, match and timestamp lives in the URL, so **Copy view link** puts the exact screen in a colleague's hands. `Ctrl`/`⌘`+`D` overlays a live world-coordinate grid so the projection can be audited without reading code.
+
+---
+
+## Grounding: this is the feature set real studios build
+
+The four headline features weren't invented. They're the standard shape of
+battle-royale level-design analytics, checked against how the genre's
+practitioners actually work:
+
+| Here | Industry equivalent |
 |---|---|
-| **Two modes** | **Aggregate** — heatmaps and statistics across hundreds of matches. **Match Replay** — one match, animated, with a timeline. They're different jobs, so they're different screens. |
-| **Player journeys** | Every path projected onto the correct minimap with the world→pixel transform verified against map landmarks (see `ARCHITECTURE.md` §3). |
-| **Humans vs bots** | Humans are bright green circles with thicker paths; bots are dimmed slate squares with thin paths. Distinguishable at a glance, toggleable with `H` / `B`. |
-| **Event markers** | Kill (amber), Death (red), Loot (cyan), Storm death (violet) — consistent across markers, legend, filters and timeline. |
-| **Filtering** | By map, by UTC date, by match, and by minimum human players per match. |
-| **Timeline playback** | Play/pause, 1×–16× speed, scrub, frame-step. The scrubber track has an **event-density histogram** baked in, so you can see where the action is and click straight to it. |
-| **Heatmaps** | Traffic (all / humans only), kill zones, death zones, loot density, storm deaths. |
-| **Flow field** | Movement **direction**, not just density. Each cell shows the mean heading of players crossing it, coloured by **coherence** (`\|Σv\| / Σ\|v\|`) — amber = a one-way corridor everyone traverses the same way, blue = a pocket where players mill about. A heatmap says *where*; this says *which way*, which is what "map flow" actually means. |
-| **Compare A/B** | A divergent diff of any two slices of the map — late vs early game, bots vs humans, deaths vs traffic. Both sides are normalised to a share of their own total before subtracting, so it shows players **redistributing** rather than one slice simply having more rows. Red = busier in A, blue = busier in B. This is the "did the change work?" view, applied to level design. |
-| **Exfil zones** <sup>inferred</sup> | The dataset has **no extraction event**. These are recovered statistically — locations where 13–47× more runs end than traffic predicts. Validated against an independent signal: players ending inside one die **0.6 %** of the time, everyone else dies **82.8 %** of the time. Gives LILA an **extraction rate** (~27 %) that was previously unmeasurable. See `ARCHITECTURE.md` §3c. |
-| **Map health scorecard** | Seven checks per map — utilisation, route coherence, traffic concentration, extraction rate, storm engagement, PvP share, shared matches — each flagged ok/warn/critical with visible thresholds, ranked by severity, and exportable as Markdown for a ticket. The tool volunteers problems instead of waiting to be interrogated. |
-| **Dead zones** | The inverse heatmap — grid cells players effectively never enter. The brief asked "which areas of the map get ignored"; this answers it directly. |
-| **Region tool** | `Shift`+drag any area to get its kill/death/loot counts and traffic share. "Is this building pulling its weight?" |
-| **Shareable views** | Every filter, layer, match and timestamp lives in the URL. **Copy view link** puts the exact screen in a colleague's hands. |
-| **Movement character** | Headline read-out of the flow field: mean coherence, mean speed in world units/second, and the split between true routes and churn cells. |
-| **Coordinate debug** | `Ctrl`/`⌘`+`D` overlays a live world-coordinate grid so the projection can be audited without reading code. |
+| Exfil zone inference | The COD: Warzone *Caldera* telemetry study analyses player paths **and their endpoint locations**; PUBG analytics warehouses build a `mart_drop_zone` grid mart on the same principle. |
+| Rotation & flow field | `mart_player_rotation` is a first-class fact table (player × match) in production PUBG warehouses. |
+| Phase compare | `fact_match_phase` (match × zone phase) is standard grain; a midcore studio writing in *PocketGamer.biz* shows the same thing as "movements on the map, different colours for different stages of the level". |
+| Map health scorecard | Balance marts — "weapons · drops · zones" — are how balance teams consume telemetry rather than reading raw graphs. |
+| Dead zones | The same *PocketGamer.biz* team used heatmaps specifically to find dead ends and under-used routes, then moved spawn points to redirect traffic. |
 
 ---
 

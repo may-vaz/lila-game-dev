@@ -40,8 +40,47 @@ function Gauge({ row }: { row: ScorecardRow }) {
   );
 }
 
+/**
+ * Each check knows which layers prove it. A flag you cannot interrogate is
+ * just a number; this turns every row into a one-click jump to the evidence,
+ * which is the difference between a report and a tool.
+ */
+const EVIDENCE: Record<string, { patch: any; label: string }> = {
+  utilisation: {
+    label: 'Show ignored area',
+    patch: { showDead: true, showHeat: false, showDiff: false, showFlow: false, showPaths: false, showEvents: false },
+  },
+  coherence: {
+    label: 'Show flow field',
+    patch: { showFlow: true, flowMin: 0.3, showHeat: true, heatMetric: 'traffic', showDiff: false, showDead: false, showPaths: false, showEvents: false },
+  },
+  concentration: {
+    label: 'Show traffic density',
+    patch: { showHeat: true, heatMetric: 'traffic', showDiff: false, showFlow: false, showDead: false, showPaths: false, showEvents: false },
+  },
+  extraction: {
+    label: 'Show exfil zones',
+    patch: { showExfil: true, colorByOutcome: true, showHeat: false, showDiff: false, showFlow: false, showDead: false, showPaths: false, showEvents: false },
+  },
+  storm_reach: {
+    label: 'Show storm deaths',
+    patch: { showHeat: true, heatMetric: 'storm', showDiff: false, showFlow: false, showDead: false, showPaths: false, showEvents: true },
+  },
+  pvp_share: {
+    label: 'Show kill zones',
+    patch: { showHeat: true, heatMetric: 'kills', showDiff: false, showFlow: false, showDead: false, showPaths: false, showEvents: false },
+  },
+  shared: {
+    label: 'Show shared matches only',
+    patch: { minHumans: 2, showHeat: true, heatMetric: 'traffic_human', showDiff: false, showFlow: false, showDead: false, showPaths: false, showEvents: false },
+  },
+};
+
 function Row({ row }: { row: ScorecardRow }) {
   const [open, setOpen] = useState(false);
+  const patch = useStore((s) => s.patch);
+  const setOpenCard = useStore((s) => s.setScorecard);
+  const ev = EVIDENCE[row.key];
   const color = STATUS_COLOR[row.status];
   return (
     <div className={`sc-row ${row.status}`} onClick={() => setOpen(!open)}>
@@ -56,6 +95,18 @@ function Row({ row }: { row: ScorecardRow }) {
       <Gauge row={row} />
       <div className="sc-why">
         {row.why}
+        {ev && (
+          <button
+            className="sc-ev"
+            onClick={(e) => {
+              e.stopPropagation();
+              patch(ev.patch);
+              setOpenCard(false);
+            }}
+          >
+            {ev.label} →
+          </button>
+        )}
         {open && (
           <div className="sc-thr">
             {row.higher ? 'Higher is better. ' : 'Lower is better. '}

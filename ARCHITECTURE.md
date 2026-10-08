@@ -226,6 +226,19 @@ Exact-`(0,0)` coordinates are treated as spawn/null placeholders rather than a r
 
 ---
 
+## 4b. Why these features, and not others
+
+The four analytical layers were chosen to match how battle-royale telemetry is actually consumed in production, not invented from scratch:
+
+- **Endpoint analysis** — the COD: Warzone *Caldera* telemetry study works on "player movement paths and their endpoint locations"; grid-cell drop/zone marts are standard in PUBG analytics warehouses. §3c applies that to a game where the endpoint event is missing entirely.
+- **Rotations** — `mart_player_rotation` at player × match grain is a first-class table in production battle-royale warehouses, which is why direction and coherence get their own layer rather than being folded into the heatmap.
+- **Phase grain** — `fact_match_phase` (match × phase) is standard. Phase here is *relative* to each match's own duration because length varies 3–4×.
+- **Balance marts** — balance teams consume flagged summaries, not raw graphs. A midcore studio writing up their heatmap tooling made the same point explicitly: interpreting heatmaps needs product expertise, so the tool should do the interpreting.
+
+**What was deliberately rejected:** chokepoint / encounter-density detection, which is textbook for this genre. With 93.3 % of matches containing exactly one human it would have rendered an empty layer. A feature that is correct in principle and empty in practice is worse than no feature.
+
+---
+
 ## 5. Major trade-offs
 
 | Decision | Alternative considered | Why I chose it | Cost |
