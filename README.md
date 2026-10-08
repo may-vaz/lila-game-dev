@@ -43,6 +43,12 @@ A browser tool that turns 5 days of raw LILA BLACK telemetry into something a **
 
 ---
 
+## Visual design
+
+The palette is sampled from the LILA BLACK key art in the assignment brief — teal atmosphere, magenta vortex, lime foliage, amber jacket, crimson eye. The mapping is semantic as well as decorative: the **storm marker is the vortex magenta**, the **death marker is the tower's eye**. Brand colours are confined to the wordmark, header and background glow; they never encode data. Details in `ARCHITECTURE.md` §3e.
+
+---
+
 ## Tech stack
 
 **Pipeline:** Python 3 · PyArrow · pandas · NumPy · Pillow

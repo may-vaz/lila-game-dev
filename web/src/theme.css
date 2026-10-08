@@ -1,25 +1,45 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
 
 :root {
-  --bg: #08090b;
-  --bg-1: #0d0f13;
-  --bg-2: #12151a;
-  --bg-3: #181c23;
-  --line: #22272f;
-  --line-2: #2d343e;
-  --text: #e8ecf1;
-  --text-2: #9aa4b2;
-  --text-3: #5f6977;
+  /* ------------------------------------------------------------------
+     Palette sampled directly from the LILA BLACK key art in the brief.
+     The game's signature is a teal atmosphere pierced by a magenta
+     vortex, with lime foliage, an amber jacket and a crimson eye.
 
-  --accent: #ff7a1a;
-  --accent-dim: #ff7a1a22;
+     Mapping those onto the data was mostly free, because the semantics
+     already lined up:
+        storm  -> the vortex magenta   (the storm IS that vortex)
+        loot   -> atmosphere teal
+        kill   -> jacket amber
+        death  -> the eye's crimson
+        human  -> foliage lime (the living thing in the frame)
+     The background is a near-black with a deliberate teal cast rather
+     than neutral grey - "LILA BLACK" is not a grey game.
+     ------------------------------------------------------------------ */
+  --bg: #04080a;
+  --bg-1: #080e12;
+  --bg-2: #0d161b;
+  --bg-3: #142026;
+  --line: #1b2c33;
+  --line-2: #263d46;
+  --text: #e6f0f2;
+  --text-2: #8ba3ab;
+  --text-3: #56696f;
+
+  /* identity only - never used to encode data */
+  --brand: #c24ae0;
+  --brand-2: #2dd4bf;
+
+  --accent: #ff9f2e;
+  --accent-dim: #ff9f2e22;
 
   --kill: #ffb02e;
-  --death: #ff3b5c;
+  --death: #f0384a;
   --loot: #22d3ee;
-  --storm: #a855f7;
-  --human: #4ade80;
-  --bot: #64748b;
+  --storm: #c24ae0;
+  --human: #8ee03c;
+  --bot: #5a7a85;
+  --exfil: #34e8a0;
 
   --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
   --sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -56,13 +76,26 @@ body {
 
 /* ---------------------------------------------------------------- header */
 .header {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 14px;
   padding: 0 12px;
-  background: var(--bg-1);
+  background: linear-gradient(180deg, #0a1419 0%, var(--bg-1) 100%);
   border-bottom: 1px solid var(--line);
   user-select: none;
+}
+/* A hairline of the key art's palette across the top of the app. One pixel,
+   but it is what stops the chrome reading as a generic dark dashboard. */
+.header::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; bottom: -1px;
+  height: 1px;
+  background: linear-gradient(90deg,
+    var(--brand) 0%, #7b5ce0 18%, var(--brand-2) 42%,
+    #8ee03c 66%, var(--accent) 86%, var(--death) 100%);
+  opacity: 0.55;
 }
 
 .brand { display: flex; align-items: baseline; gap: 8px; }
@@ -71,7 +104,12 @@ body {
   font-weight: 700;
   font-size: 13px;
   letter-spacing: 0.14em;
-  color: var(--accent);
+  /* the key art's two signature colours, in the order they appear in it */
+  background: linear-gradient(95deg, var(--brand) 0%, var(--brand-2) 55%, var(--accent) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
 }
 .brand .sub {
   font-size: 11px;
@@ -213,6 +251,21 @@ select:focus, input:focus { border-color: var(--accent); }
 
 /* ---------------------------------------------------------------- map */
 .stage { position: relative; min-width: 0; background: var(--bg); overflow: hidden; }
+/* Decorative only: a very faint echo of the key art's magenta vortex and
+   teal haze, so the dark field reads as the game's black rather than a
+   generic dashboard grey. Sits behind the canvas and never over data. */
+.stage::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 54% 44% at 50% 40%, rgba(194, 74, 224, 0.13), transparent 68%),
+    radial-gradient(ellipse 78% 64% at 50% 104%, rgba(45, 212, 191, 0.10), transparent 70%),
+    radial-gradient(ellipse 40% 34% at 50% 50%, rgba(142, 224, 60, 0.045), transparent 70%);
+  z-index: 0;
+}
+.stage > * { position: relative; z-index: 1; }
 .stage canvas { outline: none !important; }
 
 .legend {

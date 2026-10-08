@@ -10,6 +10,7 @@ import { useFiltered } from '../lib/useFiltered';
 import {
   SIZE, toPx, EVENT_COLORS, EVENT_LABEL, HUMAN_COLOR, BOT_COLOR, HEAT_RANGE, fmtTime, shortId,
   buildArrows, diffGrids, diffColor, METRIC_LABEL, OUTCOME_COLOR, EXFIL_COLOR, fmtP,
+  coherenceColor, rgbCss,
 } from '../lib/viz';
 import type { GameEvent, Journey } from '../types';
 
@@ -660,43 +661,48 @@ function Tooltip({ h }: { h: Hover }) {
 function Legend() {
   const f = useStore((s) => s.filters);
   const mode = useStore((s) => s.mode);
+  // Every swatch reads from the same constants the layers render with, so the
+  // legend physically cannot drift out of sync with the map.
+  const Sw = ({ c, sq, ring }: { c: [number, number, number]; sq?: boolean; ring?: boolean }) => (
+    <span
+      className={`swatch${sq ? ' sq' : ''}`}
+      style={ring ? { background: 'transparent', boxShadow: `inset 0 0 0 2px ${rgbCss(c)}` } : { background: rgbCss(c) }}
+    />
+  );
   return (
     <div className="legend" style={{ bottom: mode === 'replay' ? 92 : 12 }}>
       <h4>Legend</h4>
-      <div className="li"><span className="swatch" style={{ background: 'rgb(74,222,128)' }} /> Human</div>
-      <div className="li"><span className="swatch sq" style={{ background: 'rgb(100,116,139)' }} /> Bot</div>
-      {f.showEvents && (
-        <>
-          <div className="li"><span className="swatch" style={{ background: 'rgb(255,176,46)' }} /> Kill</div>
-          <div className="li"><span className="swatch" style={{ background: 'rgb(255,59,92)' }} /> Death</div>
-          <div className="li"><span className="swatch" style={{ background: 'rgb(34,211,238)' }} /> Loot</div>
-          <div className="li"><span className="swatch" style={{ background: 'rgb(168,85,247)' }} /> Storm death</div>
-        </>
-      )}
-      {f.showExfil && (
-        <div className="li"><span className="swatch" style={{ background: 'transparent', boxShadow: 'inset 0 0 0 2px rgb(52,211,153)' }} /> Inferred exfil</div>
-      )}
+      <div className="li"><Sw c={HUMAN_COLOR} /> Human</div>
+      <div className="li"><Sw c={BOT_COLOR} sq /> Bot</div>
+      {f.showEvents && (['kill', 'death', 'loot', 'storm'] as const).map((k) => (
+        <div className="li" key={k}><Sw c={EVENT_COLORS[k]} /> {EVENT_LABEL[k]}</div>
+      ))}
+      {f.showExfil && <div className="li"><Sw c={EXFIL_COLOR} ring /> Inferred exfil</div>}
       {f.colorByOutcome && (
         <>
-          <div className="li"><span className="swatch" style={{ background: 'rgb(52,211,153)' }} /> Extracted (inferred)</div>
-          <div className="li"><span className="swatch" style={{ background: 'rgb(255,59,92)' }} /> Died</div>
-          <div className="li"><span className="swatch" style={{ background: 'rgb(148,163,184)' }} /> Unresolved</div>
+          <div className="li"><Sw c={OUTCOME_COLOR.x} /> Extracted (inferred)</div>
+          <div className="li"><Sw c={OUTCOME_COLOR.d} /> Died</div>
+          <div className="li"><Sw c={OUTCOME_COLOR['?']} /> Unresolved</div>
         </>
       )}
       {f.showFlow && (
         <>
-          <div className="li"><span className="swatch sq" style={{ background: 'rgb(255,176,46)' }} /> One-way route</div>
-          <div className="li"><span className="swatch sq" style={{ background: 'rgb(34,211,238)' }} /> Mixed flow</div>
-          <div className="li"><span className="swatch sq" style={{ background: 'rgb(72,100,140)' }} /> Milling / churn</div>
+          <div className="li"><Sw c={coherenceColor(0.85)} sq /> One-way route</div>
+          <div className="li"><Sw c={coherenceColor(0.45)} sq /> Mixed flow</div>
+          <div className="li"><Sw c={coherenceColor(0.05)} sq /> Milling / churn</div>
         </>
       )}
       {f.showDiff && (
         <>
-          <div className="li"><span className="swatch sq" style={{ background: 'rgb(255,70,96)' }} /> Busier in A — {METRIC_LABEL[f.cmpA]}</div>
-          <div className="li"><span className="swatch sq" style={{ background: 'rgb(64,140,255)' }} /> Busier in B — {METRIC_LABEL[f.cmpB]}</div>
+          <div className="li"><Sw c={[255, 74, 94]} sq /> Busier in A — {METRIC_LABEL[f.cmpA]}</div>
+          <div className="li"><Sw c={[48, 184, 232]} sq /> Busier in B — {METRIC_LABEL[f.cmpB]}</div>
         </>
       )}
-      {f.showDead && <div className="li"><span className="swatch sq" style={{ background: 'rgba(255,59,92,.35)', border: '1px solid rgba(255,59,92,.6)' }} /> Dead zone</div>}
+      {f.showDead && (
+        <div className="li">
+          <span className="swatch sq" style={{ background: 'rgba(240,56,74,.35)', border: '1px solid rgba(240,56,74,.6)' }} /> Dead zone
+        </div>
+      )}
     </div>
   );
 }

@@ -18,12 +18,17 @@ export const SIZE = 1024;
 
 export const toPx = (u: number, v: number): [number, number] => [u * SIZE, (1 - v) * SIZE];
 
+/**
+ * Event palette, sampled from the LILA BLACK key art in the brief.
+ * The mapping is semantic as well as decorative: the storm really is the
+ * magenta vortex from the artwork, and the death red is the glowing eye.
+ */
 export const EVENT_COLORS: Record<EventKind, [number, number, number]> = {
-  kill: [255, 176, 46],
-  death: [255, 59, 92],
-  loot: [34, 211, 238],
-  storm: [168, 85, 247],
-  other: [148, 163, 184],
+  kill: [255, 176, 46],   // the jacket
+  death: [240, 56, 74],   // the eye
+  loot: [34, 211, 238],   // atmosphere teal
+  storm: [194, 74, 224],  // the vortex
+  other: [139, 163, 171],
 };
 
 export const EVENT_LABEL: Record<EventKind, string> = {
@@ -34,17 +39,20 @@ export const EVENT_LABEL: Record<EventKind, string> = {
   other: 'Other',
 };
 
-export const HUMAN_COLOR: [number, number, number] = [74, 222, 128];
-export const BOT_COLOR: [number, number, number] = [100, 116, 139];
+export const HUMAN_COLOR: [number, number, number] = [142, 224, 60];  // foliage lime
+export const BOT_COLOR: [number, number, number] = [90, 122, 133];    // desaturated teal-slate
 
 /** Heatmap gradient: transparent -> deep blue -> cyan -> amber -> white-hot */
+/** Heatmap gradient: deep teal -> cyan -> lime -> amber -> white-hot.
+ *  Runs through the key art's own hues while keeping luminance monotonic,
+ *  so it still reads correctly as low-to-high at a glance. */
 export const HEAT_RANGE: [number, number, number, number][] = [
-  [30, 64, 140, 55],
-  [21, 101, 192, 120],
-  [34, 211, 238, 170],
-  [255, 176, 46, 205],
-  [255, 122, 26, 232],
-  [255, 245, 235, 255],
+  [16, 58, 68, 58],
+  [22, 112, 128, 125],
+  [34, 200, 216, 170],
+  [142, 224, 60, 200],
+  [255, 160, 46, 230],
+  [255, 246, 232, 255],
 ];
 
 export function fmtTime(sec: number): string {
@@ -75,10 +83,10 @@ export function shortId(id: string, n = 8): string {
 export function coherenceColor(c: number): [number, number, number] {
   const t = Math.max(0, Math.min(1, c));
   const stops: [number, [number, number, number]][] = [
-    [0.0, [72, 100, 140]],
+    [0.0, [58, 96, 108]],
     [0.35, [34, 211, 238]],
     [0.7, [255, 176, 46]],
-    [1.0, [255, 240, 220]],
+    [1.0, [255, 242, 224]],
   ];
   for (let i = 0; i < stops.length - 1; i++) {
     const [a, ca] = stops[i];
@@ -185,7 +193,7 @@ export function diffColor(d: number): [number, number, number, number] {
   // sqrt, not linear: the diff distribution is long-tailed, so a linear ramp
   // leaves everything but a couple of cells invisible.
   const a = Math.round(40 + 195 * Math.sqrt(Math.abs(t)));
-  return t >= 0 ? [255, 70, 96, a] : [64, 140, 255, a];
+  return t >= 0 ? [255, 74, 94, a] : [48, 184, 232, a];
 }
 
 /**
@@ -221,10 +229,10 @@ export const METRIC_LABEL: Record<string, string> = {
 // ---------------------------------------------------------------------------
 
 export const OUTCOME_COLOR: Record<string, [number, number, number]> = {
-  x: [52, 211, 153],   // extracted - emerald
-  d: [255, 59, 92],    // died      - red
-  '?': [148, 163, 184], // unresolved
-  b: [100, 116, 139],  // bot
+  x: [52, 232, 160],    // extracted - mint
+  d: [240, 56, 74],     // died      - the eye
+  '?': [139, 163, 171], // unresolved
+  b: [90, 122, 133],    // bot
 };
 
 export const OUTCOME_LABEL: Record<string, string> = {
@@ -234,7 +242,7 @@ export const OUTCOME_LABEL: Record<string, string> = {
   b: 'Bot',
 };
 
-export const EXFIL_COLOR: [number, number, number] = [52, 211, 153];
+export const EXFIL_COLOR: [number, number, number] = [52, 232, 160];
 
 /** Format a Poisson tail probability for display without pretending to more precision than we have. */
 export function fmtP(p: number): string {
@@ -244,7 +252,10 @@ export function fmtP(p: number): string {
 }
 
 export const STATUS_COLOR: Record<string, string> = {
-  ok: '#34d399',
+  ok: '#34e8a0',
   warn: '#ffb02e',
-  critical: '#ff3b5c',
+  critical: '#f0384a',
 };
+
+/** CSS rgb() string from one of the palette triples above. */
+export const rgbCss = (c: [number, number, number]) => `rgb(${c[0]},${c[1]},${c[2]})`;

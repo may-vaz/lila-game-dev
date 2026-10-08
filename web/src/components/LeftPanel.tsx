@@ -1,7 +1,7 @@
 import { useStore } from '../store';
 import type { HeatMetric } from '../store';
 import { useFiltered } from '../lib/useFiltered';
-import { fmtTime, fmtNum, shortId, METRIC_LABEL } from '../lib/viz';
+import { fmtTime, fmtNum, shortId, METRIC_LABEL, EVENT_COLORS, rgbCss } from '../lib/viz';
 
 function Metric({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
   return (
@@ -288,9 +288,7 @@ export default function LeftPanel() {
             <div className="box" />
             <span
               className="swatch"
-              style={{
-                background: { kill: '#ffb02e', death: '#ff3b5c', loot: '#22d3ee', storm: '#a855f7' }[k],
-              }}
+              style={{ background: rgbCss(EVENT_COLORS[k]) }}
             />
             <span className="nm" style={{ textTransform: 'capitalize' }}>
               {k === 'storm' ? 'Storm death' : k}

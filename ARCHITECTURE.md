@@ -165,6 +165,32 @@ Two deliberate design decisions:
 
 ---
 
+## 3e. Visual design
+
+The palette is not invented. It is sampled from the two pieces of LILA BLACK key art embedded in the assignment brief itself — a teal atmosphere pierced by a magenta vortex, with lime foliage, an amber jacket and a crimson eye.
+
+That mapping turned out to be mostly free, because the semantics already lined up:
+
+| Data | Colour | Where it comes from |
+|---|---|---|
+| Storm death | magenta `#c24ae0` | the vortex — the storm *is* that thing in the artwork |
+| Loot | teal `#22d3ee` | the atmospheric haze in both images |
+| Kill | amber `#ffb02e` | the character's jacket |
+| Death | crimson `#f0384a` | the glowing eye of the tower |
+| Human | lime `#8ee03c` | the foliage — the living thing in the frame |
+| Bot | desaturated teal-slate `#5a7a85` | the background buildings |
+
+The background is a near-black with a deliberate teal cast rather than neutral grey, because "LILA BLACK" is not a grey game. The heatmap gradient runs deep teal → cyan → lime → amber → white-hot, which stays inside the game's hues while keeping luminance monotonic so it still reads correctly as low-to-high.
+
+Two constraints this was *not* allowed to break:
+
+- **Semantic distinctness comes first.** The four event types, human/bot, and the diff's two poles all have to stay separable at a glance. Hue separation was checked before anything was adopted; branding never overrode legibility.
+- **Brand colours never encode data.** `--brand` and `--brand-2` are used for the wordmark, the header hairline and a faint background glow only. Nothing a designer has to *read* is coloured by them.
+
+The legend is generated from the same constants the deck.gl layers render with (`lib/viz.ts`), so it is structurally incapable of drifting out of sync with the map.
+
+---
+
 ## 4. Assumptions, and the data problems behind them
 
 ### 4.1 The timestamp is wall-clock, not match-relative — and the unit is wrong
