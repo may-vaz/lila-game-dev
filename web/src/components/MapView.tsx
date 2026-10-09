@@ -396,7 +396,7 @@ export default function MapView() {
           : f.colorByOutcome
           ? ([...OUTCOME_COLOR[j.o ?? '?'], j.b ? 110 : 150] as [number, number, number, number])
           : j.b
-          ? ([...BOT_COLOR, 125] as [number, number, number, number])
+          ? ([...BOT_COLOR, 200] as [number, number, number, number])
           : ([...HUMAN_COLOR, 130] as [number, number, number, number]);
 
       const humanData = journeys

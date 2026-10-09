@@ -40,7 +40,7 @@ export const EVENT_LABEL: Record<EventKind, string> = {
 };
 
 export const HUMAN_COLOR: [number, number, number] = [142, 224, 60];  // foliage lime
-export const BOT_COLOR: [number, number, number] = [90, 122, 133];    // desaturated teal-slate
+export const BOT_COLOR: [number, number, number] = [140, 92, 255];    // electric violet
 
 /** Heatmap gradient: transparent -> deep blue -> cyan -> amber -> white-hot */
 /** Heatmap gradient: deep teal -> cyan -> lime -> amber -> white-hot.
