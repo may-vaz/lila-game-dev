@@ -2,8 +2,10 @@
 
 A browser tool that turns 5 days of raw LILA BLACK telemetry into something a **Level Designer** can actually open and use: player paths drawn on the real minimaps, kill/death/loot/storm events as distinct markers, heatmaps, dead-zone detection, and a scrubbable match replay.
 
-### ▶ Live tool — _(deployed URL goes here)_
-### 🎥 Walkthrough video — _(Loom link goes here)_
+### ▶ **Live tool — https://web-mays-projects-038914fe.vercel.app**
+
+No login, no setup, nothing to install. A written walkthrough of every feature is
+[further down this page](#walkthrough).
 
 ![Aggregate view](docs/screenshot-aggregate.png)
 
@@ -34,10 +36,10 @@ the foundation they all stand on.
 
 | | Feature | What it answers | Why it exists |
 |---|---|---|---|
-| 1 | **Exfil Intelligence** <sup>inferred</sup> | *Where do players actually get out?* | The telemetry has **no extraction event** — the defining outcome of an extraction shooter is unrecorded. These zones are recovered statistically: locations where 13–47× more runs end than traffic predicts, validated against an independent signal (players ending inside one die **0.6 %** of the time; everyone else dies **82.8 %**). Produces an **extraction rate** (~27 %) that was previously unmeasurable. `ARCHITECTURE.md` §3c |
-| 2 | **Rotation & Flow Field** | *Which way do players move, and is it a route or a wander?* | A heatmap says *where*. This says *which way*, per cell, coloured by **coherence** = `\|Σv\| / Σ\|v\|` — amber is a one-way corridor, blue is milling. Rotations are a first-class table in real battle-royale warehouses, not an afterthought. `ARCHITECTURE.md` §3b |
-| 3 | **Phase Compare (A/B)** | *Did the distribution of players actually move?* | Divergent diff of any two slices — late vs early game, bots vs humans, deaths vs traffic. Both sides are normalised to a share of their own total **before** subtracting, so it measures redistribution rather than sample size. `ARCHITECTURE.md` §3b |
-| 4 | **Map Health Scorecard** | *What's wrong with this map, without me going to look?* | Seven checks per map, severity-ranked, thresholds visible and contestable, **every flag clickable straight to the layer that proves it**, exportable as Markdown for a ticket. The only declarative view in the tool. `ARCHITECTURE.md` §3d |
+| 1 | **Exfil Intelligence** <sup>inferred</sup> | *Where do players actually get out?* | The telemetry has **no extraction event** — the defining outcome of an extraction shooter is unrecorded. These zones are recovered statistically: locations where 13–47× more runs end than traffic predicts, validated against an independent signal (players ending inside one die **0.6 %** of the time; everyone else dies **82.8 %**). Produces an **extraction rate** (~27 %) that was previously unmeasurable. `docs/DESIGN_NOTES.md` §3c |
+| 2 | **Rotation & Flow Field** | *Which way do players move, and is it a route or a wander?* | A heatmap says *where*. This says *which way*, per cell, coloured by **coherence** = `\|Σv\| / Σ\|v\|` — amber is a one-way corridor, blue is milling. Rotations are a first-class table in real battle-royale warehouses, not an afterthought. `docs/DESIGN_NOTES.md` §3b |
+| 3 | **Phase Compare (A/B)** | *Did the distribution of players actually move?* | Divergent diff of any two slices — late vs early game, bots vs humans, deaths vs traffic. Both sides are normalised to a share of their own total **before** subtracting, so it measures redistribution rather than sample size. `docs/DESIGN_NOTES.md` §3b |
+| 4 | **Map Health Scorecard** | *What's wrong with this map, without me going to look?* | Seven checks per map, severity-ranked, thresholds visible and contestable, **every flag clickable straight to the layer that proves it**, exportable as Markdown for a ticket. The only declarative view in the tool. `docs/DESIGN_NOTES.md` §3d |
 
 ### The two that complete the run
 
@@ -46,17 +48,62 @@ ask what happens at the *start*, and what the map pays you in between.
 
 | | Feature | What it answers | Why it exists |
 |---|---|---|---|
-| 5 | **Spawn → Outcome Funnel** | *Does the spawn you're handed decide how your run ends?* | Clustering the **first** position of every human journey the way Exfil clusters the last one shows entries landing in only **9–19 cells per map, at 30–57× the rate traffic predicts** — LILA BLACK uses **fixed spawn points**, not a battle-royale free drop. That makes spawn a controlled variable, so it can be crossed against the inferred outcome. The result is a fairness number: Ambrose is balanced (**1.37×** spread between best and worst spawn), **Lockdown is not — 6.4×**, with its worst spawn extracting **6 %** on a 2:34 median run against **40 %** and 7:07 for its best. Zones under 10 runs are drawn hollow and refused a ranking. `ARCHITECTURE.md` §3f |
-| 6 | **Loot Economy** | *Per unit of footfall, what does a cell pay, and what does it cost?* | Loot is **78.9 %** of all recorded events and the biggest lever a Level Designer actually controls, but a loot heatmap mostly restates where players walk (**r = 0.80** against traffic on Ambrose). This is the ratio instead — reward `loot/visit` against risk `(kills+deaths)/visit`, each split at the map median — giving the four-way **honeypot / free-farm / deathtrap / barren** classification loot-balance teams work from. It surfaces **262 loot deserts** on Ambrose: cells with 20+ visits that pay nothing at all. `ARCHITECTURE.md` §3g |
+| 5 | **Spawn → Outcome Funnel** | *Does the spawn you're handed decide how your run ends?* | Clustering the **first** position of every human journey the way Exfil clusters the last one shows entries landing in only **9–19 cells per map, at 30–57× the rate traffic predicts** — LILA BLACK uses **fixed spawn points**, not a battle-royale free drop. That makes spawn a controlled variable, so it can be crossed against the inferred outcome. The result is a fairness number: Ambrose is balanced (**1.37×** spread between best and worst spawn), **Lockdown is not — 6.4×**, with its worst spawn extracting **6 %** on a 2:34 median run against **40 %** and 7:07 for its best. Zones under 10 runs are drawn hollow and refused a ranking. `docs/DESIGN_NOTES.md` §3f |
+| 6 | **Loot Economy** | *Per unit of footfall, what does a cell pay, and what does it cost?* | Loot is **78.9 %** of all recorded events and the biggest lever a Level Designer actually controls, but a loot heatmap mostly restates where players walk (**r = 0.80** against traffic on Ambrose). This is the ratio instead — reward `loot/visit` against risk `(kills+deaths)/visit`, each split at the map median — giving the four-way **honeypot / free-farm / deathtrap / barren** classification loot-balance teams work from. It surfaces **262 loot deserts** on Ambrose: cells with 20+ visits that pay nothing at all. `docs/DESIGN_NOTES.md` §3g |
 
 ### The two it stands on
 
 | | Feature | Contains |
 |---|---|---|
-| 5 | **Journey Explorer** | The aggregate workspace: every path on the correct minimap, humans (lime) vs bots (slate), kill/death/loot/storm markers, filtering by map / date / match / player count, six heatmap metrics, **dead-zone detection**, and a `Shift`+drag **region tool** that returns kill/death/loot counts and traffic share for any area. |
-| 6 | **Match Replay** | One match animated over its own timeline — play/pause, 1×–16×, scrub, frame-step, with an **event-density histogram baked into the scrubber** so you can see where the action is and click to it. |
+| 7 | **Journey Explorer** | The aggregate workspace: every path on the correct minimap, humans (lime) vs bots (slate), kill/death/loot/storm markers, filtering by map / date / match / player count, six heatmap metrics, **dead-zone detection**, and a `Shift`+drag **region tool** that returns kill/death/loot counts and traffic share for any area. |
+| 8 | **Match Replay** | One match animated over its own timeline — play/pause, 1×–16×, scrub, frame-step, with an **event-density histogram baked into the scrubber** so you can see where the action is and click to it. |
 
 Throughout: every filter, layer, match and timestamp lives in the URL, so **Copy view link** puts the exact screen in a colleague's hands. `Ctrl`/`⌘`+`D` overlays a live world-coordinate grid so the projection can be audited without reading code.
+
+---
+
+## Documents
+
+| File | What it is |
+|---|---|
+| [`ARCHITECTURE.md`](ARCHITECTURE.md) | **One page**: stack, data flow, coordinate mapping, assumptions, trade-offs. |
+| [`INSIGHTS.md`](INSIGHTS.md) | Six findings, each with evidence, actions and why a Level Designer cares. |
+| [`docs/DESIGN_NOTES.md`](docs/DESIGN_NOTES.md) | Appendix: the derivations and statistics behind each layer. |
+| [`pipeline/DATA_QUALITY.md`](pipeline/DATA_QUALITY.md) | Auto-generated: every row dropped and why. |
+
+---
+
+## Walkthrough
+
+No video needed — open the live URL and follow along. You should not have to ask
+me anything.
+
+**The key to the whole map: shape is _who/what_, colour repeats it.**
+Solid glyphs are humans, outlined glyphs are bots.
+
+| | Kill | Death | Loot | Storm |
+|---|---|---|---|---|
+| **Shape** | 4-point star | saltire (X) | square | hexagon |
+
+1. **Ambrose Valley opens on the traffic heatmap.** Read the legend bottom-left
+   first — it is generated from the same constants the map draws with.
+2. **Press `1`** to show journeys. Human routes are **solid**, bot routes are
+   **dashed**. Press `1` again to hide them.
+3. **Switch to Match Replay** (top bar). A match is preselected. **`Space`**
+   plays it. The moving token is a **filled diamond** for a human and a
+   **hollow triangle** for a bot. Scrub, change speed 1×–16×, and use the event
+   -density bars baked into the scrubber to jump to the action.
+4. **Filter** by map, date and match in the left panel. The heatmap metric
+   selector covers traffic, kill zones, death zones, loot and storm.
+5. **Press `7`** for the inferred exfil zones — the finding the tool was really
+   built for. **`O`** then colours every run by its inferred outcome.
+6. **Press `5`** for the flow field, **`6`** for A/B compare, **`8`** for spawn
+   fairness, **`9`** for the loot economy.
+7. **Click "Map health"** (top-left) for the scorecard. Every flag has a
+   **"Show …"** button that reconfigures the map to the layer that proves it.
+8. **Hover anything** for a tooltip naming the raw event and whether the actor
+   was a human or a bot. **`Shift`+drag** any box for region stats.
+   **`?`** lists every shortcut.
 
 ---
 
@@ -80,7 +127,7 @@ practitioners actually work:
 
 ## Visual design
 
-The palette is sampled from the LILA BLACK key art in the assignment brief — teal atmosphere, magenta vortex, lime foliage, amber jacket, crimson eye. The mapping is semantic as well as decorative: the **storm marker is the vortex magenta**, the **death marker is the tower's eye**. Brand colours are confined to the wordmark, header and background glow; they never encode data. Details in `ARCHITECTURE.md` §3e.
+The palette is sampled from the LILA BLACK key art in the assignment brief — teal atmosphere, magenta vortex, lime foliage, amber jacket, crimson eye. The mapping is semantic as well as decorative: the **storm marker is the vortex magenta**, the **death marker is the tower's eye**. Brand colours are confined to the wordmark, header and background glow; they never encode data. Details in `docs/DESIGN_NOTES.md` §3e.
 
 ---
 

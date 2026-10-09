@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import DeckGL from '@deck.gl/react';
-import { OrthographicView, COORDINATE_SYSTEM } from '@deck.gl/core';
-import { BitmapLayer, PathLayer, ScatterplotLayer, PolygonLayer, LineLayer, TextLayer } from '@deck.gl/layers';
+import { OrthographicView } from '@deck.gl/core';
+import { BitmapLayer, PathLayer, ScatterplotLayer, PolygonLayer, LineLayer, TextLayer, IconLayer } from '@deck.gl/layers';
 import { HeatmapLayer } from '@deck.gl/aggregation-layers';
 import { TripsLayer } from '@deck.gl/geo-layers';
 
@@ -13,6 +13,10 @@ import {
   coherenceColor, rgbCss, SPAWN_COLOR, spawnRateColor, buildEconomy,
   QUADRANT_COLOR, QUADRANT_LABEL,
 } from '../lib/viz';
+import {
+  glyphAtlas, ICON_MAPPING, eventIcon, actorIcon, eventGlyphSize, dashPath,
+  EVENT_SHAPE, ACTOR_SHAPE, GlyphSwatch, GlyphPair, GlyphRule,
+} from '../lib/glyphs';
 import type { GameEvent, Journey } from '../types';
 
 const INITIAL = { target: [SIZE / 2, SIZE / 2, 0], zoom: -0.2, minZoom: -2.5, maxZoom: 6 };
@@ -103,7 +107,7 @@ export default function MapView() {
         // Any analytical overlay needs the basemap pushed back or it fights
         // the data for attention; raw journeys read better at full brightness.
         opacity: f.showHeat || f.showDiff ? 0.6 : f.showFlow ? 0.72 : 1.0,
-        coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+        coordinateSystem: 'cartesian',
         pickable: false,
       }),
     );
@@ -123,7 +127,7 @@ export default function MapView() {
         new HeatmapLayer({
           id: `heat-${f.mapId}-${f.heatMetric}`,
           data: pts,
-          coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+          coordinateSystem: 'cartesian',
           getPosition: (d: any) => d.p,
           getWeight: (d: any) => d.w,
           radiusPixels: 36,
@@ -159,7 +163,7 @@ export default function MapView() {
         new PolygonLayer({
           id: 'deadzones',
           data: polys,
-          coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+          coordinateSystem: 'cartesian',
           getPolygon: (d: any) => d.c,
           getFillColor: [255, 59, 92, 46],
           getLineColor: [255, 59, 92, 90],
@@ -202,7 +206,7 @@ export default function MapView() {
         new PolygonLayer({
           id: `diff-${f.mapId}-${f.cmpA}-${f.cmpB}`,
           data: polys,
-          coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+          coordinateSystem: 'cartesian',
           getPolygon: (d: any) => d.c,
           getFillColor: (d: any) => diffColor(d.d),
           stroked: false,
@@ -232,7 +236,7 @@ export default function MapView() {
         new PolygonLayer({
           id: `econ-${f.mapId}`,
           data: polys,
-          coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+          coordinateSystem: 'cartesian',
           getPolygon: (d: any) => d.c,
           getFillColor: (d: any) => [...QUADRANT_COLOR[d.d.q as keyof typeof QUADRANT_COLOR], 165] as any,
           stroked: false,
@@ -252,7 +256,7 @@ export default function MapView() {
         new LineLayer({
           id: `flow-${f.mapId}`,
           data: segs,
-          coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+          coordinateSystem: 'cartesian',
           getSourcePosition: (d: any) => d.s,
           getTargetPosition: (d: any) => d.t,
           getColor: (d: any) => d.color,
@@ -279,7 +283,7 @@ export default function MapView() {
         new ScatterplotLayer({
           id: `exfil-halo-${f.mapId}`,
           data: z,
-          coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+          coordinateSystem: 'cartesian',
           getPosition: (d: any) => toPx(d.u, d.v),
           getRadius: (d: any) => 11 + 17 * Math.sqrt(d.exits / maxExits),
           radiusUnits: 'pixels',
@@ -292,7 +296,7 @@ export default function MapView() {
         new ScatterplotLayer({
           id: `exfil-${f.mapId}`,
           data: z,
-          coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+          coordinateSystem: 'cartesian',
           getPosition: (d: any) => toPx(d.u, d.v),
           getRadius: (d: any) => 11 + 17 * Math.sqrt(d.exits / maxExits),
           radiusUnits: 'pixels',
@@ -310,7 +314,7 @@ export default function MapView() {
         new TextLayer({
           id: `exfil-label-${f.mapId}`,
           data: z,
-          coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+          coordinateSystem: 'cartesian',
           getPosition: (d: any) => toPx(d.u, d.v),
           getText: (d: any) => `EXFIL · ${d.exits}`,
           getSize: 10,
@@ -340,7 +344,7 @@ export default function MapView() {
         new ScatterplotLayer({
           id: `spawn-${f.mapId}`,
           data: z,
-          coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+          coordinateSystem: 'cartesian',
           getPosition: (d: any) => toPx(d.u, d.v),
           getRadius: size,
           radiusUnits: 'pixels',
@@ -364,7 +368,7 @@ export default function MapView() {
         new TextLayer({
           id: `spawn-label-${f.mapId}`,
           data: z.filter((d) => d.runs >= spawns.min_runs),
-          coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+          coordinateSystem: 'cartesian',
           getPosition: (d: any) => toPx(d.u, d.v),
           getText: (d: any) => `${Math.round(d.rate * 100)}%`,
           getSize: 10,
@@ -378,27 +382,43 @@ export default function MapView() {
     }
 
     // 4. paths -----------------------------------------------------------
+    // Aggregate mode: static full journeys.
+    //
+    // Human routes are SOLID, bot routes are DASHED. The dash is generated on
+    // the CPU in lib/glyphs.ts rather than with PathStyleExtension, to avoid
+    // adding a dependency for one effect. Line style is the actor channel
+    // here because at this zoom a bot path and a human path are the same
+    // width and colour alone was doing all the work - and failing.
     if (f.showPaths && !inReplay) {
-      // Aggregate mode: static full journeys. Bots dimmed + thinner.
-      const data = journeys.map((j) => ({
-        j,
-        path: j.x.map((u, i) => toPx(u, j.y[i])),
-      }));
-      L.push(
+      const pathColor = (j: Journey) =>
+        j.i === selected
+          ? ([255, 122, 26, 255] as [number, number, number, number])
+          : f.colorByOutcome
+          ? ([...OUTCOME_COLOR[j.o ?? '?'], j.b ? 110 : 150] as [number, number, number, number])
+          : j.b
+          ? ([...BOT_COLOR, 125] as [number, number, number, number])
+          : ([...HUMAN_COLOR, 130] as [number, number, number, number]);
+
+      const humanData = journeys
+        .filter((j) => !j.b)
+        .map((j) => ({ j, path: j.x.map((u, i) => toPx(u, j.y[i])) }));
+
+      // One entry per dash segment, each still carrying its journey for picking.
+      const botData: { j: Journey; path: number[][] }[] = [];
+      for (const j of journeys) {
+        if (!j.b) continue;
+        const full = j.x.map((u, i) => toPx(u, j.y[i]));
+        for (const seg of dashPath(full, 9, 7)) botData.push({ j, path: seg });
+      }
+
+      const mkPath = (id: string, data: any[], width: (j: Journey) => number) =>
         new PathLayer({
-          id: 'paths',
+          id,
           data,
-          coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+          coordinateSystem: 'cartesian',
           getPath: (d: any) => d.path,
-          getColor: (d: any) =>
-            d.j.i === selected
-              ? [255, 122, 26, 255]
-              : f.colorByOutcome
-              ? [...OUTCOME_COLOR[d.j.o ?? '?'], d.j.b ? 42 : 130]
-              : d.j.b
-              ? [...BOT_COLOR, 42]
-              : [...HUMAN_COLOR, 120],
-          getWidth: (d: any) => (d.j.i === selected ? 3 : d.j.b ? 1 : 1.6),
+          getColor: (d: any) => pathColor(d.j) as any,
+          getWidth: (d: any) => width(d.j),
           widthUnits: 'pixels',
           widthMinPixels: 1,
           capRounded: true,
@@ -409,9 +429,11 @@ export default function MapView() {
           onClick: (i: any) => i.object && select(i.object.j.i),
           onHover: (i: any) =>
             setHover(i.object ? { x: i.x, y: i.y, obj: i.object.j, kind: 'path' } : null),
-          updateTriggers: { getColor: [selected], getWidth: [selected] },
-        }),
-      );
+          updateTriggers: { getColor: [selected, f.colorByOutcome], getWidth: [selected] },
+        });
+
+      if (botData.length) L.push(mkPath('paths-bot', botData, (j) => (j.i === selected ? 2.6 : 1.4)));
+      if (humanData.length) L.push(mkPath('paths-human', humanData, (j) => (j.i === selected ? 3 : 1.6)));
     }
 
     if (f.showPaths && inReplay) {
@@ -425,7 +447,7 @@ export default function MapView() {
         new TripsLayer({
           id: 'trips',
           data: trips,
-          coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+          coordinateSystem: 'cartesian',
           getPath: (d: any) => d.path,
           getTimestamps: (d: any) => d.ts,
           getColor: (d: any) =>
@@ -462,56 +484,70 @@ export default function MapView() {
         heads.push({ j, p: toPx(j.x[idx], j.y[idx]) });
       }
       L.push(
-        new ScatterplotLayer({
+        new IconLayer({
           id: 'heads',
           data: heads,
-          coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+          coordinateSystem: 'cartesian',
+          iconAtlas: glyphAtlas(),
+          iconMapping: ICON_MAPPING,
+          // Diamond = human, hollow triangle = bot. This is the token the eye
+          // actually follows during playback, so it carries the actor channel.
+          getIcon: (d: any) => actorIcon(d.j.b),
           getPosition: (d: any) => d.p,
-          getFillColor: (d: any) =>
-            d.j.i === selected ? [255, 122, 26] : d.j.b ? [...BOT_COLOR, 200] : HUMAN_COLOR,
-          getLineColor: [8, 9, 11, 220],
-          lineWidthMinPixels: 1.2,
-          stroked: true,
-          getRadius: (d: any) => (d.j.i === selected ? 6 : d.j.b ? 3 : 4.5),
-          radiusUnits: 'pixels',
+          getSize: (d: any) => (d.j.i === selected ? 19 : d.j.b ? 13 : 15),
+          sizeUnits: 'pixels',
+          getColor: (d: any) =>
+            d.j.i === selected
+              ? [255, 122, 26, 255]
+              : f.colorByOutcome
+              ? [...OUTCOME_COLOR[d.j.o ?? '?'], 255]
+              : d.j.b
+              ? [...BOT_COLOR, 255]
+              : [...HUMAN_COLOR, 255],
           pickable: true,
           onClick: (i: any) => i.object && select(i.object.j.i),
           onHover: (i: any) =>
             setHover(i.object ? { x: i.x, y: i.y, obj: i.object.j, kind: 'path' } : null),
-          updateTriggers: { getFillColor: [selected], getRadius: [selected] },
+          updateTriggers: {
+            getColor: [selected, f.colorByOutcome],
+            getSize: [selected],
+            getIcon: [],
+          },
         }),
       );
     }
 
     // 5. discrete events --------------------------------------------------
+    // Shape encodes the event type, fill encodes the actor:
+    //   star = kill, saltire = death, square = loot, hexagon = storm
+    //   solid = human, outlined = bot
+    // Colour repeats the event type on purpose, so the map survives greyscale
+    // printing and colour-vision deficiency. See lib/glyphs.ts.
     if (f.showEvents) {
       const visible = inReplay ? events.filter((e) => e.t <= time) : events;
-      // humans -> circles, bots -> squares, via two layers
-      const mk = (id: string, data: GameEvent[], square: boolean) =>
-        new ScatterplotLayer({
-          id,
-          data,
-          coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+      L.push(
+        new IconLayer({
+          id: 'events',
+          data: visible,
+          coordinateSystem: 'cartesian',
+          iconAtlas: glyphAtlas(),
+          iconMapping: ICON_MAPPING,
+          getIcon: (d: GameEvent) => eventIcon(d.k, d.b),
           getPosition: (d: GameEvent) => toPx(d.x, d.y),
-          getFillColor: (d: GameEvent) => {
+          getSize: (d: GameEvent) => eventGlyphSize(d.k),
+          sizeUnits: 'pixels',
+          getColor: (d: GameEvent) => {
             const c = EVENT_COLORS[d.k] ?? EVENT_COLORS.other;
-            return [c[0], c[1], c[2], d.b ? 150 : 235];
+            // Hollow bot glyphs lose area, so they get full alpha to stay level
+            // with the solid human ones rather than reading as "less important".
+            return [c[0], c[1], c[2], 255];
           },
-          getLineColor: [8, 9, 11, 210],
-          lineWidthMinPixels: 0.8,
-          stroked: true,
-          getRadius: (d: GameEvent) => (d.k === 'storm' ? 5.5 : d.k === 'loot' ? 2.6 : 3.6),
-          radiusUnits: 'pixels',
-          radiusMinPixels: 1.5,
           pickable: true,
           onHover: (i: any) =>
             setHover(i.object ? { x: i.x, y: i.y, obj: i.object, kind: 'event' } : null),
           onClick: (i: any) => i.object && select(i.object.p),
-          ...(square ? { } : {}),
-        });
-
-      L.push(mk('ev-bot', visible.filter((e) => e.b === 1), true));
-      L.push(mk('ev-human', visible.filter((e) => e.b === 0), false));
+        }),
+      );
     }
 
     // 6. region rectangle --------------------------------------------------
@@ -522,7 +558,7 @@ export default function MapView() {
         new PolygonLayer({
           id: 'region',
           data: [{ c: [toPx(u0, v0), toPx(u1, v0), toPx(u1, v1), toPx(u0, v1)] }],
-          coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+          coordinateSystem: 'cartesian',
           getPolygon: (d: any) => d.c,
           getFillColor: [255, 122, 26, 26],
           getLineColor: [255, 122, 26, 230],
@@ -553,7 +589,7 @@ export default function MapView() {
         new LineLayer({
           id: 'dbg-grid',
           data: lines,
-          coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+          coordinateSystem: 'cartesian',
           getSourcePosition: (d: any) => d.s,
           getTargetPosition: (d: any) => d.e,
           getColor: [255, 122, 26, 70],
@@ -563,7 +599,7 @@ export default function MapView() {
         new TextLayer({
           id: 'dbg-text',
           data: labels,
-          coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+          coordinateSystem: 'cartesian',
           getPosition: (d: any) => d.p,
           getText: (d: any) => d.s,
           getSize: 10,
@@ -783,10 +819,23 @@ function Legend() {
   return (
     <div className="legend" style={{ bottom: mode === 'replay' ? 92 : 12 }}>
       <h4>Legend</h4>
-      <div className="li"><Sw c={HUMAN_COLOR} /> Human</div>
-      <div className="li"><Sw c={BOT_COLOR} sq /> Bot</div>
+      <GlyphRule />
+      {(f.showPaths || mode === 'replay') && (
+        <>
+          <div className="li">
+            <GlyphSwatch shape={ACTOR_SHAPE.human} color={rgbCss(HUMAN_COLOR)} /> Human
+            {mode === 'replay' ? '' : ' — solid route'}
+          </div>
+          <div className="li">
+            <GlyphSwatch shape={ACTOR_SHAPE.bot} color={rgbCss(BOT_COLOR)} hollow /> Bot
+            {mode === 'replay' ? '' : ' — dashed route'}
+          </div>
+        </>
+      )}
       {f.showEvents && (['kill', 'death', 'loot', 'storm'] as const).map((k) => (
-        <div className="li" key={k}><Sw c={EVENT_COLORS[k]} /> {EVENT_LABEL[k]}</div>
+        <div className="li" key={k}>
+          <GlyphPair shape={EVENT_SHAPE[k]} color={rgbCss(EVENT_COLORS[k])} /> {EVENT_LABEL[k]}
+        </div>
       ))}
       {f.showExfil && <div className="li"><Sw c={EXFIL_COLOR} ring /> Inferred exfil</div>}
       {f.showSpawns && (

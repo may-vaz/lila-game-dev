@@ -1,6 +1,12 @@
 # What I learned about LILA BLACK
 
-The brief asked for three. Six are here: the fourth and fifth came out of layers built after the first pass, and both change what to do about the earlier ones. Insight 5 in particular retracts something I wrote in Insight 3, and Insight 6 came from running Insight 5's method backwards.
+The brief asked for three. **If you read only three, read 1, 2 and 5** — they
+are the three that change what a Level Designer would do on Monday morning.
+
+Six are here because the later layers kept overturning the earlier ones, and
+leaving that out would misrepresent how the work actually went: **Insight 5
+retracts a recommendation I made in Insight 3**, and **Insight 6 came from
+running Insight 5's method backwards**. Insights 4 and 6 are additional.
 
 All figures are from the full dataset — **1,243 files, 89,104 rows, 796 matches, 245 humans, 94 bots, Feb 9–14 2026 (UTC)** — read through the tool in this repo. Every claim below is reproducible from a link in the tool itself.
 
@@ -104,7 +110,7 @@ Switching the Dead Zones layer on for each map, Grand Rift lights up almost enti
 | Lockdown | 21.5 % | 31 % | 51 % of human traffic |
 | **Grand Rift** | **7.4 %** | **48 %** | 49 % of human traffic |
 
-"Ignored" = reachable grid cells (64×64, morphologically closed from the observed-traffic footprint, so the ocean and off-island void are excluded) receiving under 0.5 % of peak traffic. Method in `ARCHITECTURE.md` §3.
+"Ignored" = reachable grid cells (64×64, morphologically closed from the observed-traffic footprint, so the ocean and off-island void are excluded) receiving under 0.5 % of peak traffic. Method in `ARCHITECTURE.md` §3 and `docs/DESIGN_NOTES.md`.
 
 Two compounding problems:
 
@@ -264,7 +270,7 @@ Extraction points are the highest-stakes geometry in an extraction shooter: they
 
 ## Insight 6 — LILA BLACK has fixed spawn points, and on Lockdown the one you get is worth a 6.4× swing in whether you survive
 
-### What caught my eye
+**What caught my eye**
 
 Insight 5 found where runs *end* by clustering last positions. The obvious
 control was to run the same clustering on **first** positions — I expected a
@@ -284,7 +290,7 @@ battle-royale free drop and was wrong.
 
 ![Lockdown spawn points coloured by extraction rate](docs/screenshot-spawns.png)
 
-### The evidence
+**The evidence**
 
 A fixed spawn is an *assigned* variable, not a chosen one — which makes it clean
 to cross-tabulate against the run outcome recovered in Insight 5. Spawns with
@@ -329,12 +335,12 @@ same way, and the gap to the next-worst spawn is large. This is strong enough to
 investigate, not yet strong enough to ship a fix against — which is exactly how
 the tool labels it.
 
-### Is it actionable? Yes
+**Actionable**
 
-**Metrics affected:** extraction rate, median run length, early-session churn,
+**Metrics affected**
+
+Extraction rate, median run length, early-session churn,
 and — because this is the first thing a new player experiences — D1 retention.
-
-**Action items**
 
 1. Pull spawn H's coordinates from the tool and walk the first 30 seconds of
    routing out of it. The 2:34 median says players are dying close to it, so the
@@ -347,7 +353,7 @@ and — because this is the first thing a new player experiences — D1 retentio
 4. Raise the sample. 167 human runs across 9 spawns on Lockdown is thin; this
    analysis wants a few thousand to move from "investigate" to "ship".
 
-### Why a Level Designer should care
+**Why a level designer should care**
 
 Spawn placement is one of the few things on this list that is cheap to change —
 it is a transform in a level file, not a geometry rebuild. And it is the single
