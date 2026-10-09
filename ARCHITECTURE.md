@@ -1,38 +1,32 @@
 # Architecture
 
 A browser tool that turns 1,243 raw telemetry shards from LILA BLACK into
-something a **Level Designer** can open and act on — not a notebook, and not a
-dashboard for analysts.
+something a **Level Designer** can act on — not a notebook, and not a dashboard
+for analysts. It runs in two modes: **aggregate**, reading 796 matches at once to
+find patterns, and **replay**, watching one match unfold to understand why. Every
+derived number is clickable back to the journeys that produced it.
 
-That distinction drove every decision. A designer does not want a scatter plot;
-they want to know *which part of my map is broken, and what do I change.* So the
-tool is built in two modes — **aggregate**, where 796 matches are read at once
-to find patterns, and **replay**, where a single match is watched unfold to
-understand why — and every derived claim is clickable back to the raw journeys
-that produced it. Nothing asserts a number it cannot show you the evidence for.
-
-**The headline result:** the telemetry has **no extraction event** — the
-defining outcome of an extraction shooter is simply absent. It was recovered
-statistically and validated against a signal the method never sees (§4, assumption 3). That
-turned an unmeasurable game into one with a measurable **~27 % extraction rate**,
-and made every downstream feature possible.
+The hard problem: the telemetry has **no extraction event**, so the defining
+outcome of an extraction shooter is absent. It was recovered statistically and
+validated (§4.3), which turned an unmeasurable game into one with a **~27 %
+extraction rate**. Feature list and screenshots are in the
+[README](README.md); derivations in [`docs/DESIGN_NOTES.md`](docs/DESIGN_NOTES.md).
 
 ### What's on the screen
 
-| | Feature | The question it answers | The number that proves it works |
-|---|---|---|---|
-| 1 | **Exfil Intelligence** <sup>inferred</sup> | Where do players actually get out? | Exits cluster at **13–47×** expected; those who reach one die **0.6 %** vs **82.8 %** |
-| 2 | **Rotation & Flow Field** | Which way do players move — route, or wander? | 28×28 vector field; **26 one-way corridors vs 138 churn cells** on Ambrose |
-| 3 | **Phase Compare (A/B)** | Did the distribution actually move? | Divergent diff of any two slices; dispersion drops **39.2 %** early→late |
-| 4 | **Map Health Scorecard** | What's wrong with this map, without going to look? | 7 checks/map, visible thresholds, **3 / 5 / 4** criticals — each row links to its evidence |
-| 5 | **Spawn → Outcome Funnel** | Does your spawn decide your run? | Fixed spawns at **30–57×** expected; **Lockdown is 6.4× unfair** (40 % vs 6 %) |
-| 6 | **Loot Economy** | Per unit of footfall, what does a cell pay? | **262 of 706** Ambrose cells (37 %) are loot deserts; reward/traffic *r* = 0.80 |
-| 7 | **Journey Explorer** | The aggregate workspace | Every path on the correct minimap · shape-coded humans/bots · `Shift`+drag any region for live stats |
-| 8 | **Match Replay** | Watch one match unfold | Play/pause, 1×–16×, frame-step, histogram-baked timeline |
+| Feature | What it does, and the number behind it |
+|---|---|
+| **Exfil Intelligence** <sup>inferred</sup> | Where runs actually end. Exits cluster at **13–47×** expected; players reaching one die **0.6 %** vs **82.8 %** elsewhere. |
+| **Rotation & Flow Field** | Which way players move, not just where. 28×28 vector field — **26 one-way corridors, 138 churn cells** on Ambrose. |
+| **Phase Compare (A/B)** | Whether a distribution really moved. Divergent diff of any two slices; dispersion drops **39.2 %** early→late. |
+| **Map Health Scorecard** | What's broken, without going to look. 7 checks per map, thresholds visible, **3 / 5 / 4** criticals, every row links to its evidence. |
+| **Spawn → Outcome Funnel** | Whether the spawn you're handed decides your run. Fixed spawns at **30–57×** expected; **Lockdown is 6.4× unfair** — 40 % vs 6 %. |
+| **Loot Economy** | What a cell pays per unit of footfall. **262 of 706** Ambrose cells are loot deserts; reward/traffic *r* = **0.80**. |
+| **Journey Explorer** | The aggregate workspace: every path on the correct minimap, shape-coded humans and bots, `Shift`+drag any region for live stats. |
+| **Match Replay** | One match over its own timeline — play/pause, 1×–16×, frame-step, histogram-baked scrubber. |
 
-Features 1–6 are analysis built on top of the brief's must-haves; 7 and 8 are the
-foundation they stand on. The derivations, statistics and design arguments behind
-each live in [`docs/DESIGN_NOTES.md`](docs/DESIGN_NOTES.md) so this stays one page.
+Screenshots in the [README](README.md); derivations in
+[`docs/DESIGN_NOTES.md`](docs/DESIGN_NOTES.md).
 
 ---
 
@@ -136,8 +130,6 @@ a bug — see `INSIGHTS.md` §1 — but it constrains what can honestly be built
 
 ## 6. How I used AI
 
-Heavily, as the brief invited — for scaffolding, deck.gl boilerplate and prose.
-What was not delegated: choosing the precompute architecture, finding the Y-flip
-and elevation traps, designing the exfil inference and its validation, and
-deciding what *not* to build. Every statistic here was computed from the data
-and checked, not generated.
+The decisions this tool rests on came from the data: reading the raw shards until the (x, z) / elevation split and the Y-flip surfaced;
+choosing to precompute rather than query in the browser; and many more. AI did the work around those decisions 
+React and deck.gl scaffolding, repetitive layer code, a second pass on prose. Every figure in these documents was computed from the data and checked before it was written.
