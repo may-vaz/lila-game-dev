@@ -525,10 +525,18 @@ export default function MapView() {
     // printing and colour-vision deficiency. See lib/glyphs.ts.
     if (f.showEvents) {
       const visible = inReplay ? events.filter((e) => e.t <= time) : events;
+            // Bot events are only 4 % of the set (584 of 14,750) but 42 % of all
+      // deaths. In natural data order the solid human 96 % paints over them and
+      // the hollow glyphs effectively disappear at full aggregate density.
+      // Drawing bots last costs nothing and guarantees they are never occluded.
+      const ordered =
+        visible.some((e) => e.b) && visible.some((e) => !e.b)
+          ? [...visible.filter((e) => !e.b), ...visible.filter((e) => e.b)]
+          : visible;
       L.push(
         new IconLayer({
           id: 'events',
-          data: visible,
+          data: ordered,
           coordinateSystem: 'cartesian',
           iconAtlas: glyphAtlas(),
           iconMapping: ICON_MAPPING,
