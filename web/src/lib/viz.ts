@@ -232,7 +232,7 @@ export const OUTCOME_COLOR: Record<string, [number, number, number]> = {
   x: [52, 232, 160],    // extracted - mint
   d: [240, 56, 74],     // died      - the eye
   '?': [139, 163, 171], // unresolved
-  b: [90, 122, 133],    // bot
+  b: [140, 92, 255],    // bot - matches BOT_COLOR
 };
 
 export const OUTCOME_LABEL: Record<string, string> = {
